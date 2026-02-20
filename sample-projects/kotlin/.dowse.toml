@@ -1,0 +1,3 @@
+[[lsp]]
+extensions = [".kt"]
+command = ["kotlin-lsp", "--stdio"]

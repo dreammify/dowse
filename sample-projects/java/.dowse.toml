@@ -1,0 +1,3 @@
+[[lsp]]
+extensions = [".java"]
+command = ["jdtls"]
