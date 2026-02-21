@@ -20,10 +20,10 @@ import (
 
 func newDiagnosticsCmd() *cobra.Command {
 	var (
-		noWait   bool
-		timeout  time.Duration
-		gitFlag  bool
-		jsonFlag bool
+		noWait         bool
+		timeout        time.Duration
+		gitFlag        bool
+		jsonFlag       bool
 		claudeHookFlag bool
 	)
 

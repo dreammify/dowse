@@ -646,10 +646,10 @@ func TestFormatSeverityFiltering(t *testing.T) {
 		wantErrors   int
 		wantWarnings int
 	}{
-		{"error only", 1, 2, 2, 0},        // error + nil (treated as error)
-		{"warning", 2, 3, 2, 1},            // error + warning + nil
-		{"information", 3, 4, 2, 1},        // error + warning + information + nil
-		{"hint (all)", 4, 5, 2, 1},         // all diagnostics
+		{"error only", 1, 2, 2, 0},  // error + nil (treated as error)
+		{"warning", 2, 3, 2, 1},     // error + warning + nil
+		{"information", 3, 4, 2, 1}, // error + warning + information + nil
+		{"hint (all)", 4, 5, 2, 1},  // all diagnostics
 	}
 
 	for _, testCase := range tests {
