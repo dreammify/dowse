@@ -1973,7 +1973,15 @@ func TestDefinitionConcurrentSameFile(t *testing.T) {
 	resultCh := make(chan int, concurrency)
 	for range concurrency {
 		go func() {
-			resp, _ := postDefinition(t, client, DefinitionRequest{File: mainGo, Line: 1, Character: 1})
+			// Inline the HTTP call instead of using postDefinition because
+			// go vet forbids t.Fatalf from a non-test goroutine.
+			reqBody, _ := json.Marshal(DefinitionRequest{File: mainGo, Line: 1, Character: 1})
+			resp, err := client.Post("http://dowse/definition", "application/json", bytes.NewReader(reqBody))
+			if err != nil {
+				resultCh <- -1
+				return
+			}
+			resp.Body.Close()
 			resultCh <- resp.StatusCode
 		}()
 	}
