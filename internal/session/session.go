@@ -49,7 +49,7 @@ func New(ctx context.Context, workspaceRoot string, lspCommand []string, initOpt
 		initOptions:   initOptions,
 	}
 
-	proc, err := transport.Start(ctx, lspCommand, s.handleNotification, s.handleCallback)
+	proc, err := transport.Start(ctx, lspCommand, workspaceRoot, s.handleNotification, s.handleCallback)
 	if err != nil {
 		return nil, fmt.Errorf("starting LSP process: %w", err)
 	}
@@ -365,6 +365,8 @@ func DefaultLanguageID(ext string) protocol.LanguageKind {
 		return protocol.LanguageKindJavaScriptReact
 	case ".py":
 		return protocol.LanguageKindPython
+	case ".rb", ".rbi":
+		return protocol.LanguageKindRuby
 	case ".rs":
 		return protocol.LanguageKindRust
 	default:
