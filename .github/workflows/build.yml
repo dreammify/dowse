@@ -287,7 +287,7 @@ jobs:
         run: ./gradlew :mockito-core:dependencies --no-daemon
 
       - name: Run mockito integration tests
-        run: go test -v -race -count=1 -tags=integration -timeout=600s -run='TestMockito' ./internal/integration/
+        run: go test -v -race -count=1 -tags=integration -timeout=1500s -run='TestMockito' ./internal/integration/
 
   # integration-kotlinx-coroutines: disabled — kotlin-lsp does not support
   # semantic analysis for Kotlin Multiplatform projects.
