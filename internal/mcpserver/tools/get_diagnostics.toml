@@ -1,0 +1,10 @@
+name = "get_diagnostics"
+description = "Gets LSP diagnostics (errors, warnings) for one or more files"
+
+[parameters.files]
+type = "array"
+description = "Array of absolute file paths to check"
+required = true
+
+[parameters.files.items]
+type = "string"

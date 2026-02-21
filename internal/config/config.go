@@ -18,9 +18,15 @@ type DaemonConfig struct {
 
 const DefaultSessionTTL = 30 * time.Minute
 
+// MCPConfig holds MCP server settings.
+type MCPConfig struct {
+	Tools []string `toml:"tools"` // tool names to expose; nil/absent = all
+}
+
 // Config holds the merged LSP configuration.
 type Config struct {
 	Daemon *DaemonConfig `toml:"daemon"`
+	MCP    *MCPConfig    `toml:"mcp"`
 	LSPs   []LSPConfig   `toml:"lsp"`
 }
 
@@ -34,6 +40,16 @@ func (c *Config) SessionTTL() time.Duration {
 		return DefaultSessionTTL
 	}
 	return dur
+}
+
+// ExposedTools returns the list of MCP tool names to expose.
+// Returns nil if no [mcp] section is configured or tools list is empty,
+// meaning all tools should be exposed.
+func (c *Config) ExposedTools() []string {
+	if c.MCP == nil || len(c.MCP.Tools) == 0 {
+		return nil
+	}
+	return c.MCP.Tools
 }
 
 // LSPConfig maps file extensions to an LSP server command.
@@ -130,6 +146,13 @@ func merge(global, workspace *Config) *Config {
 		merged.Daemon = workspace.Daemon
 	} else {
 		merged.Daemon = global.Daemon
+	}
+
+	// Workspace MCP config takes precedence over global.
+	if workspace.MCP != nil {
+		merged.MCP = workspace.MCP
+	} else {
+		merged.MCP = global.MCP
 	}
 
 	for _, lsp := range global.LSPs {

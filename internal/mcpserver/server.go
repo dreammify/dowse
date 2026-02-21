@@ -158,13 +158,16 @@ func (h *HTTPDaemonClient) post(ctx context.Context, path string, body []byte) (
 
 // Server is an MCP server that bridges tool calls to the dowse daemon.
 type Server struct {
-	mux    handler.Map
-	client DaemonClient
+	mux          handler.Map
+	client       DaemonClient
+	allowedTools []string // nil = all tools exposed; non-nil = only listed tools
 }
 
 // New creates an MCP server backed by the given DaemonClient.
-func New(client DaemonClient) *Server {
-	server := &Server{client: client}
+// allowedTools controls which tools are exposed: nil means all tools,
+// a non-nil slice restricts to only the named tools.
+func New(client DaemonClient, allowedTools []string) *Server {
+	server := &Server{client: client, allowedTools: allowedTools}
 	server.mux = handler.Map{
 		"initialize":                handler.New(server.handleInitialize),
 		"notifications/initialized": handler.New(server.handleInitialized),
@@ -208,57 +211,38 @@ func (s *Server) handleInitialized(_ context.Context) error {
 }
 
 func (s *Server) handleToolsList(_ context.Context) (ToolsListResult, error) {
-	return ToolsListResult{
-		Tools: []ToolDef{
-			{
-				Name:        "get_diagnostics",
-				Description: "Get LSP diagnostics (errors, warnings) for a single file.",
-				InputSchema: InputSchema{
-					Type: "object",
-					Properties: map[string]PropertySchema{
-						"file": {Type: "string", Description: "Absolute path to the file."},
-					},
-					Required: []string{"file"},
-				},
-			},
-			{
-				Name:        "get_diagnostics_batch",
-				Description: "Get LSP diagnostics for multiple files at once.",
-				InputSchema: InputSchema{
-					Type: "object",
-					Properties: map[string]PropertySchema{
-						"files": {
-							Type:        "array",
-							Description: "Array of absolute file paths.",
-							Items:       &PropertySchema{Type: "string"},
-						},
-					},
-					Required: []string{"files"},
-				},
-			},
-			{
-				Name:        "get_definition",
-				Description: "Go to definition for a symbol at a given position in a file. Returns the file, line, and character of the definition along with the source line.",
-				InputSchema: InputSchema{
-					Type: "object",
-					Properties: map[string]PropertySchema{
-						"file":      {Type: "string", Description: "Absolute path to the file."},
-						"line":      {Type: "integer", Description: "Line number (1-indexed)."},
-						"character": {Type: "integer", Description: "Character offset (1-indexed)."},
-					},
-					Required: []string{"file", "line", "character"},
-				},
-			},
-		},
-	}, nil
+	if s.allowedTools == nil {
+		return ToolsListResult{Tools: allToolDefs}, nil
+	}
+	allowed := make(map[string]bool, len(s.allowedTools))
+	for _, name := range s.allowedTools {
+		allowed[name] = true
+	}
+	var filtered []ToolDef
+	for _, tool := range allToolDefs {
+		if allowed[tool.Name] {
+			filtered = append(filtered, tool)
+		}
+	}
+	return ToolsListResult{Tools: filtered}, nil
+}
+
+func (s *Server) isToolAllowed(name string) bool {
+	for _, allowed := range s.allowedTools {
+		if allowed == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleToolsCall(ctx context.Context, params ToolsCallParams) (ToolsCallResult, error) {
+	if s.allowedTools != nil && !s.isToolAllowed(params.Name) {
+		return toolError(fmt.Sprintf("tool not enabled: %s", params.Name)), nil
+	}
 	switch params.Name {
 	case "get_diagnostics":
 		return s.callGetDiagnostics(ctx, params.Arguments)
-	case "get_diagnostics_batch":
-		return s.callGetDiagnosticsBatch(ctx, params.Arguments)
 	case "get_definition":
 		return s.callGetDefinition(ctx, params.Arguments)
 	default:
@@ -267,27 +251,6 @@ func (s *Server) handleToolsCall(ctx context.Context, params ToolsCallParams) (T
 }
 
 func (s *Server) callGetDiagnostics(ctx context.Context, rawArgs json.RawMessage) (ToolsCallResult, error) {
-	var args struct {
-		File string `json:"file"`
-	}
-	if err := json.Unmarshal(rawArgs, &args); err != nil {
-		return toolError(fmt.Sprintf("invalid arguments: %v", err)), nil
-	}
-	if args.File == "" {
-		return toolError("missing required parameter: file"), nil
-	}
-
-	result, err := s.client.GetDiagnostics(ctx, args.File)
-	if err != nil {
-		return toolError(fmt.Sprintf("daemon error: %v", err)), nil
-	}
-
-	return ToolsCallResult{
-		Content: []ContentBlock{{Type: "text", Text: string(result)}},
-	}, nil
-}
-
-func (s *Server) callGetDiagnosticsBatch(ctx context.Context, rawArgs json.RawMessage) (ToolsCallResult, error) {
 	var args struct {
 		Files []string `json:"files"`
 	}
