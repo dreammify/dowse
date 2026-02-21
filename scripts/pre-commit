@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-commit hook: runs go vet and gofmt -s on all Go files.
+# Fails the commit if either reports issues.
+
+echo "Running go vet..."
+if ! go vet ./...; then
+    echo "go vet failed. Fix the issues above before committing."
+    exit 1
+fi
+
+echo "Running gofmt -s..."
+unformatted=$(gofmt -s -l .)
+if [ -n "$unformatted" ]; then
+    echo "The following files need formatting (run 'gofmt -s -w .'):"
+    echo "$unformatted"
+    exit 1
+fi
+
+echo "Pre-commit checks passed."
