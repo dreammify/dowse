@@ -82,7 +82,7 @@ func setupKotlinxCoroutinesDaemon(t *testing.T) *dowseInstance {
 		// Kotlin LSP initialization (JVM + Gradle indexing).
 		warmupFile := filepath.Join(projectDir,
 			"kotlinx-coroutines-core", "common", "src", "CoroutineName.kt")
-		warmupCmd := exec.Command(kotlinxCoroutinesInstance.binary, "diagnostics", "--timeout", "120s", warmupFile)
+		warmupCmd := exec.Command(kotlinxCoroutinesInstance.binary, "diagnostics", "--timeout", "180s", warmupFile)
 		warmupCmd.Env = kotlinxCoroutinesInstance.env
 		warmupOut, warmupErr := warmupCmd.CombinedOutput()
 		if warmupErr != nil {

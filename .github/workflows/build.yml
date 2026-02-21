@@ -111,7 +111,7 @@ jobs:
         run: ./gradlew dependencies --no-daemon
 
       - name: Run kotlin-lsp integration tests
-        run: go test -v -race -count=1 -tags=integration -timeout=300s -run='TestKotlin' ./internal/integration/
+        run: go test -v -race -count=1 -tags=integration -timeout=300s -run='TestKotlin_' ./internal/integration/
 
   integration-jdtls:
     needs: lint-and-test
@@ -259,7 +259,7 @@ jobs:
   integration-mockito:
     needs: lint-and-test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -282,13 +282,17 @@ jobs:
           tar -xzf jdtls.tar.gz -C "$HOME/jdtls"
           ln -s "$HOME/jdtls/bin/jdtls" /usr/local/bin/jdtls
 
+      - name: Pre-fetch Gradle dependencies
+        working-directory: sample-projects/mockito
+        run: ./gradlew :mockito-core:dependencies --no-daemon
+
       - name: Run mockito integration tests
-        run: go test -v -race -count=1 -tags=integration -timeout=300s -run='TestMockito' ./internal/integration/
+        run: go test -v -race -count=1 -tags=integration -timeout=600s -run='TestMockito' ./internal/integration/
 
   integration-kotlinx-coroutines:
     needs: lint-and-test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -311,5 +315,9 @@ jobs:
           chmod +x "$HOME/kotlin-lsp/kotlin-lsp.sh"
           ln -s "$HOME/kotlin-lsp/kotlin-lsp.sh" /usr/local/bin/kotlin-lsp
 
+      - name: Pre-fetch Gradle dependencies
+        working-directory: sample-projects/kotlinx.coroutines
+        run: ./gradlew :kotlinx-coroutines-core:dependencies --no-daemon
+
       - name: Run kotlinx.coroutines integration tests
-        run: go test -v -race -count=1 -tags=integration -timeout=300s -run='TestKotlinxCoroutines' ./internal/integration/
+        run: go test -v -race -count=1 -tags=integration -timeout=600s -run='TestKotlinxCoroutines' ./internal/integration/
