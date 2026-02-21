@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1935,6 +1936,66 @@ func TestDefinitionDoesNotInvalidateCache(t *testing.T) {
 	}
 	if len(mock.changes) != 0 {
 		t.Errorf("expected 0 change calls after second definition, got %d -- definition should not invalidate cache", len(mock.changes))
+	}
+}
+
+func TestDefinitionSessionError(t *testing.T) {
+	_, mainGo := setupTestWorkspace(t)
+
+	mock := newMockSession(session.DiagnosticPull)
+	mock.definitionErr = fmt.Errorf("LSP process crashed")
+
+	_, client, _ := startTestDaemon(t, func(_ context.Context, root string, _ []string, _ map[string]any) (LSPSession, error) {
+		return mock, nil
+	})
+
+	resp, body := postDefinition(t, client, DefinitionRequest{File: mainGo, Line: 1, Character: 1})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for session error, got %d: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "LSP process crashed") {
+		t.Errorf("expected error message to contain 'LSP process crashed', got %q", string(body))
+	}
+}
+
+func TestDefinitionConcurrentSameFile(t *testing.T) {
+	_, mainGo := setupTestWorkspace(t)
+
+	mock := newMockSession(session.DiagnosticPush)
+	mock.definitionResult = []protocol.Location{}
+
+	_, client, _ := startTestDaemon(t, func(_ context.Context, root string, _ []string, _ map[string]any) (LSPSession, error) {
+		return mock, nil
+	})
+
+	// Fire multiple concurrent definition requests for the same file.
+	const concurrency = 10
+	resultCh := make(chan int, concurrency)
+	for range concurrency {
+		go func() {
+			resp, _ := postDefinition(t, client, DefinitionRequest{File: mainGo, Line: 1, Character: 1})
+			resultCh <- resp.StatusCode
+		}()
+	}
+
+	for range concurrency {
+		status := <-resultCh
+		if status != http.StatusOK {
+			t.Errorf("expected 200, got %d", status)
+		}
+	}
+
+	// ensureFileOpenReadOnly should have deduplicated: only 1 didOpen, 0 didChange.
+	mock.mu.Lock()
+	openCount := len(mock.opened)
+	changeCount := len(mock.changes)
+	mock.mu.Unlock()
+
+	if openCount != 1 {
+		t.Errorf("expected exactly 1 didOpen for concurrent definitions, got %d", openCount)
+	}
+	if changeCount != 0 {
+		t.Errorf("expected 0 didChange for concurrent definitions, got %d", changeCount)
 	}
 }
 

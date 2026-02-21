@@ -929,6 +929,45 @@ func TestE2EGetDefinitionHappyPath(t *testing.T) {
 	}
 }
 
+func TestToolsCallGetDefinitionZeroLineCharacter(t *testing.T) {
+	server := New(&mockDaemonClient{})
+
+	tests := []struct {
+		name     string
+		args     string
+		wantText string
+	}{
+		{"line=0", `{"file":"/tmp/a.go","line":0,"character":1}`, "missing required parameter: line"},
+		{"character=0", `{"file":"/tmp/a.go","line":1,"character":0}`, "missing required parameter: character"},
+		{"negative line", `{"file":"/tmp/a.go","line":-1,"character":1}`, "missing required parameter: line"},
+		{"negative character", `{"file":"/tmp/a.go","line":1,"character":-5}`, "missing required parameter: character"},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, err := callMethod(t, server, "tools/call", ToolsCallParams{
+				Name:      "get_definition",
+				Arguments: json.RawMessage(testCase.args),
+			})
+			if err != nil {
+				t.Fatalf("tools/call: %v", err)
+			}
+
+			var callResult ToolsCallResult
+			if err := json.Unmarshal(result, &callResult); err != nil {
+				t.Fatalf("unmarshaling result: %v", err)
+			}
+
+			if !callResult.IsError {
+				t.Error("expected isError=true, got false")
+			}
+			if callResult.Content[0].Text != testCase.wantText {
+				t.Errorf("error text = %q, want %q", callResult.Content[0].Text, testCase.wantText)
+			}
+		})
+	}
+}
+
 // startFakeHTTPDaemon starts an HTTP server on a temporary Unix socket.
 // Uses /tmp directly because macOS has a 104-byte limit on Unix socket paths
 // and t.TempDir() paths are too long.
