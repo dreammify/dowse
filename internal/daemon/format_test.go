@@ -629,6 +629,37 @@ func TestFormatDefinitionResponse_ContextLineUnreadable(t *testing.T) {
 	}
 }
 
+func TestFormatDefinitionResponse_LineOutOfRange(t *testing.T) {
+	dir := t.TempDir()
+	shortFile := filepath.Join(dir, "short.go")
+	// File has only 2 lines (0 and 1).
+	if err := os.WriteFile(shortFile, []byte("line0\nline1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	locations := []protocol.Location{
+		{
+			Uri: "file://" + shortFile,
+			Range: protocol.Range{
+				Start: protocol.Position{Line: 99, Character: 0},
+				End:   protocol.Position{Line: 99, Character: 5},
+			},
+		},
+	}
+
+	resp := formatDefinitionResponse(locations, dir)
+	if len(resp.Locations) != 1 {
+		t.Fatalf("expected 1 location, got %d", len(resp.Locations))
+	}
+	if resp.Locations[0].Context != "" {
+		t.Errorf("expected empty context for out-of-range line, got %q", resp.Locations[0].Context)
+	}
+	// Line should still be 1-indexed conversion of 99 -> 100.
+	if resp.Locations[0].Line != 100 {
+		t.Errorf("expected line 100, got %d", resp.Locations[0].Line)
+	}
+}
+
 func TestFormatSeverityFiltering(t *testing.T) {
 	content := []byte("a\nb\nc\nd\ne\n")
 	diags := []cache.Diagnostic{
