@@ -59,8 +59,12 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-**[INSERT CONTACT METHOD]**.
+reported to the community leaders responsible for enforcement via
+[GitHub's private vulnerability reporting](https://github.com/dreammify/dowse/security/advisories/new).
+This allows you to submit a report **anonymously** without needing to provide
+your identity. To find this form, go to the repository's **Security** tab, click
+**Advisories**, then **New draft security advisory**. Use the advisory
+description to detail the Code of Conduct violation.
 
 All complaints will be reviewed and investigated promptly and fairly.
 
