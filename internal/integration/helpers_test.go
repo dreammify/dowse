@@ -22,6 +22,11 @@ func TestMain(m *testing.M) {
 	teardownJdtls()
 	teardownTypeScript()
 	teardownSorbet()
+	teardownExcalidraw()
+	teardownZustand()
+	teardownRedisson()
+	teardownMockito()
+	teardownKotlinxCoroutines()
 	os.Exit(code)
 }
 
