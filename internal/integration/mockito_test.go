@@ -82,7 +82,11 @@ func setupMockitoDaemon(t *testing.T) *dowseInstance {
 		// jdtls initialization (JVM + Gradle project import + indexing).
 		warmupFile := filepath.Join(projectDir,
 			"src", "main", "java", "org", "mockito", "ArgumentCaptor.java")
-		warmupCmd := exec.Command(mockitoInstance.binary, "diagnostics", "--timeout", "480s", warmupFile)
+		warmupTimeout := "480s"
+		if os.Getenv("CI") != "" {
+			warmupTimeout = "900s"
+		}
+		warmupCmd := exec.Command(mockitoInstance.binary, "diagnostics", "--timeout", warmupTimeout, warmupFile)
 		warmupCmd.Env = mockitoInstance.env
 		warmupOut, warmupErr := warmupCmd.CombinedOutput()
 		if warmupErr != nil {
