@@ -27,6 +27,7 @@ func TestMain(m *testing.M) {
 	teardownRedisson()
 	teardownMockito()
 	teardownKotlinxCoroutines()
+	teardownOkHttp()
 	os.Exit(code)
 }
 

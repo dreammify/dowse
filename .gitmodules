@@ -19,3 +19,6 @@
 [submodule "sample-projects/kotlinx.coroutines"]
 	path = sample-projects/kotlinx.coroutines
 	url = https://github.com/Kotlin/kotlinx.coroutines.git
+[submodule "sample-projects/okhttp"]
+	path = sample-projects/okhttp
+	url = https://github.com/square/okhttp.git

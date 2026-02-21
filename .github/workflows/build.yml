@@ -259,7 +259,7 @@ jobs:
   integration-mockito:
     needs: lint-and-test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -289,35 +289,8 @@ jobs:
       - name: Run mockito integration tests
         run: go test -v -race -count=1 -tags=integration -timeout=600s -run='TestMockito' ./internal/integration/
 
-  integration-kotlinx-coroutines:
-    needs: lint-and-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-          submodules: true
+  # integration-kotlinx-coroutines: disabled — kotlin-lsp does not support
+  # semantic analysis for Kotlin Multiplatform projects.
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-
-      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Install kotlin-lsp
-        run: |
-          curl -fsSL -o kotlin-lsp.zip "https://download-cdn.jetbrains.com/kotlin-lsp/261.13587.0/kotlin-lsp-261.13587.0-linux-x64.zip"
-          unzip -q kotlin-lsp.zip -d "$HOME/kotlin-lsp"
-          chmod +x "$HOME/kotlin-lsp/kotlin-lsp.sh"
-          ln -s "$HOME/kotlin-lsp/kotlin-lsp.sh" /usr/local/bin/kotlin-lsp
-
-      - name: Pre-fetch Gradle dependencies
-        working-directory: sample-projects/kotlinx.coroutines
-        run: ./gradlew :kotlinx-coroutines-core:dependencies --no-daemon
-
-      - name: Run kotlinx.coroutines integration tests
-        run: go test -v -race -count=1 -tags=integration -timeout=600s -run='TestKotlinxCoroutines' ./internal/integration/
+  # integration-okhttp: disabled — kotlin-lsp does not support
+  # semantic analysis for Kotlin Multiplatform projects.

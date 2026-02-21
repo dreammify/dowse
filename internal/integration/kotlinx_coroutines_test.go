@@ -43,6 +43,8 @@ var kotlinxCoroutinesTomlPath string
 func setupKotlinxCoroutinesDaemon(t *testing.T) *dowseInstance {
 	t.Helper()
 
+	t.Skip("kotlinx.coroutines tests disabled: kotlin-lsp does not support semantic analysis for Kotlin Multiplatform projects")
+
 	if _, err := exec.LookPath("kotlin-lsp"); err != nil {
 		t.Skip("kotlin-lsp not found on PATH, skipping kotlinx.coroutines integration tests")
 	}
