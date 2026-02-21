@@ -5,6 +5,7 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -157,13 +158,15 @@ func (p *dowseInstance) diagnostics(t *testing.T, file string, extraArgs ...stri
 	args = append(args, file)
 	cmd := exec.Command(p.binary, args...)
 	cmd.Env = p.env
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("dowse diagnostics %s: %v\n%s", file, err, out)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("dowse diagnostics %s: %v\nstdout:\n%s\nstderr:\n%s", file, err, stdout.String(), stderr.String())
 	}
 	var result DiagnosticsResult
-	if err := json.Unmarshal(out, &result); err != nil {
-		t.Fatalf("parsing diagnostics JSON: %v\nraw output: %s", err, out)
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("parsing diagnostics JSON: %v\nraw output: %s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	return result
 }
@@ -185,12 +188,14 @@ func (p *dowseInstance) diagnosticsWithRetry(
 		args = append(args, file)
 		cmd := exec.Command(p.binary, args...)
 		cmd.Env = p.env
-		out, err := cmd.CombinedOutput()
-		if err != nil {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		if err := json.Unmarshal(out, &result); err != nil {
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
@@ -222,13 +227,15 @@ func (p *dowseInstance) definition(t *testing.T, file string, line, character in
 	args := []string{"definition", file, fmt.Sprintf("%d", line), fmt.Sprintf("%d", character)}
 	cmd := exec.Command(p.binary, args...)
 	cmd.Env = p.env
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("dowse definition %s:%d:%d: %v\n%s", file, line, character, err, out)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("dowse definition %s:%d:%d: %v\nstdout:\n%s\nstderr:\n%s", file, line, character, err, stdout.String(), stderr.String())
 	}
 	var result DefinitionResult
-	if err := json.Unmarshal(out, &result); err != nil {
-		t.Fatalf("parsing definition JSON: %v\nraw output: %s", err, out)
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("parsing definition JSON: %v\nraw output: %s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	return result
 }
@@ -248,12 +255,14 @@ func (p *dowseInstance) definitionWithRetry(
 		args := []string{"definition", file, fmt.Sprintf("%d", line), fmt.Sprintf("%d", character)}
 		cmd := exec.Command(p.binary, args...)
 		cmd.Env = p.env
-		out, err := cmd.CombinedOutput()
-		if err != nil {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		if err := json.Unmarshal(out, &result); err != nil {
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
