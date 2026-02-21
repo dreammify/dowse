@@ -4,15 +4,11 @@ LSP bridge for AI agents. Background daemon manages LSP server connections, file
 
 ## Prime Directive
 
-When you discover faulty behavior, ALWAYS add regression tests, verify they fail, update the code and then verify your tests pass. THIS IS VERY IMPORTANT. 
+When you discover a bug, **ALWAYS add regression tests**, **verify they fail**, **update the code** and then **verify your tests pass**. THIS IS VERY IMPORTANT.
 
 After finishing a piece of code that is testable, make sure you test its behavior for correctness. Avoid writing excessive code, conciseness is a virtue. Add documentation when needed in complex parts of the codebase, but don't add comments everywhere if the code is self-explanatory. You can also manually test your code against this codebase or one of the sample projects if you want to verify a piece of CLI behavior.
 
-## Dogfooding
-
-Build and use dowse yourself while working on this project. After making changes, compile with `go build -o dowse ./cmd/dowse` and use the built binary to check diagnostics on files you've edited (e.g., `./dowse diagnostics <file>`). This catches real usability issues that tests alone miss.
-
-If you encounter faulty or high-friction behavior in dowse that is **outside the scope of your current task**, do not fix it. Instead, document what you observed in `research/experiences.md` — describe the scenario, what you expected, and what actually happened. Keep entries concise.
+Since you will use dowse while working on this code you may discover issues or possibilities for improvement. If you encounter faulty or high-friction behavior in dowse that is **outside the scope of your current task**, do not fix it. Instead, document what you observed in `EXPERIENCES.md` — describe the scenario, what you expected, and what actually happened. Keep entries concise.
 
 ## Architecture
 
