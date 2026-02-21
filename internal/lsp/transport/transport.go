@@ -32,14 +32,18 @@ type LSPProcess struct {
 }
 
 // Start spawns the LSP command and establishes the JSON-RPC connection.
+// The working directory of the child process is set to workingDir if non-empty.
 // The onNotification callback, if non-nil, is called for each server notification.
 // The onCallback callback, if non-nil, is called for each server-initiated request.
-func Start(ctx context.Context, command []string, onNotification NotificationHandler, onCallback CallbackHandler) (*LSPProcess, error) {
+func Start(ctx context.Context, command []string, workingDir string, onNotification NotificationHandler, onCallback CallbackHandler) (*LSPProcess, error) {
 	if len(command) == 0 {
 		return nil, fmt.Errorf("empty command")
 	}
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -138,12 +142,13 @@ func (p *LSPProcess) ExitError() error {
 	return p.err
 }
 
-// lenientLSP creates a channel using standard LSP framing that tolerates
-// any Content-Type from the server. Some LSP servers (e.g. JetBrains
-// Kotlin LSP) send "application/json-rpc" instead of the standard
-// "application/vscode-jsonrpc", which the strict channel.LSP rejects.
+// lenientLSP creates a channel using Content-Length framing without sending
+// a Content-Type header. On receive, it tolerates any Content-Type from the
+// server (for JetBrains Kotlin LSP which sends "application/json-rpc") and
+// strips non-standard JSON-RPC fields like "requestMethod" (sent by Sorbet)
+// that would cause jrpc2 to reject the message.
 func lenientLSP(r io.Reader, wc io.WriteCloser) channel.Channel {
-	return &lenientChannel{inner: channel.LSP(r, wc)}
+	return &lenientChannel{inner: channel.Header("")(r, wc)}
 }
 
 type lenientChannel struct {
@@ -158,5 +163,36 @@ func (c *lenientChannel) Recv() ([]byte, error) {
 	if _, ok := err.(*channel.ContentTypeMismatchError); ok {
 		err = nil
 	}
+	if len(msg) > 0 {
+		msg = stripNonStandardFields(msg)
+	}
 	return msg, err
+}
+
+// stripNonStandardFields removes non-standard JSON-RPC fields from a message.
+// Some LSP servers (e.g., Sorbet) include extra fields like "requestMethod"
+// in their responses, which jrpc2 rejects as invalid.
+func stripNonStandardFields(msg []byte) []byte {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &raw); err != nil {
+		return msg
+	}
+	changed := false
+	for key := range raw {
+		switch key {
+		case "jsonrpc", "id", "method", "params", "result", "error":
+			// Standard JSON-RPC fields — keep.
+		default:
+			delete(raw, key)
+			changed = true
+		}
+	}
+	if !changed {
+		return msg
+	}
+	cleaned, err := json.Marshal(raw)
+	if err != nil {
+		return msg
+	}
+	return cleaned
 }

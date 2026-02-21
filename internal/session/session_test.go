@@ -127,7 +127,8 @@ func TestInitializePushModel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	s, err := session.New(ctx, "/tmp/test-workspace", pushMockServer(), nil)
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, pushMockServer(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -150,7 +151,8 @@ func TestInitializePullModel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	s, err := session.New(ctx, "/tmp/test-workspace", pullMockServer(), nil)
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, pullMockServer(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -173,7 +175,8 @@ func TestDidOpenChangeClose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	s, err := session.New(ctx, "/tmp/test-workspace", pushMockServer(), nil)
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, pushMockServer(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -187,7 +190,7 @@ func TestDidOpenChangeClose(t *testing.T) {
 		t.Fatalf("Initialize: %v", err)
 	}
 
-	uri := "file:///tmp/test-workspace/main.go"
+	uri := "file://" + workspaceDir + "/main.go"
 
 	if err := s.OpenFile(ctx, uri, "package main\n", "go"); err != nil {
 		t.Fatalf("OpenFile: %v", err)
@@ -206,7 +209,8 @@ func TestPushDiagnosticsNotification(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	s, err := session.New(ctx, "/tmp/test-workspace", pushMockServer(), nil)
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, pushMockServer(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -232,7 +236,7 @@ func TestPushDiagnosticsNotification(t *testing.T) {
 	})
 
 	// didOpen triggers the mock to send a publishDiagnostics notification.
-	uri := "file:///tmp/test-workspace/main.go"
+	uri := "file://" + workspaceDir + "/main.go"
 	if err := s.OpenFile(ctx, uri, "package main\n", "go"); err != nil {
 		t.Fatalf("OpenFile: %v", err)
 	}
@@ -265,7 +269,8 @@ func TestPullDiagnostics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	s, err := session.New(ctx, "/tmp/test-workspace", pullMockServer(), nil)
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, pullMockServer(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -279,7 +284,7 @@ func TestPullDiagnostics(t *testing.T) {
 		t.Fatalf("Initialize: %v", err)
 	}
 
-	diags, err := s.PullDiagnostics(ctx, "file:///tmp/test-workspace/main.go")
+	diags, err := s.PullDiagnostics(ctx, "file://"+workspaceDir+"/main.go")
 	if err != nil {
 		t.Fatalf("PullDiagnostics: %v", err)
 	}
@@ -359,7 +364,8 @@ func TestCallbackRegisterCapability(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	s, err := session.New(ctx, "/tmp/test-workspace", callbackMockServer(), nil)
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, callbackMockServer(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -389,6 +395,8 @@ func TestDefaultLanguageID(t *testing.T) {
 		{".js", "javascript"},
 		{".jsx", "javascriptreact"},
 		{".py", "python"},
+		{".rb", "ruby"},
+		{".rbi", "ruby"},
 		{".rs", "rust"},
 		{".unknown", ""},
 	}
@@ -404,7 +412,8 @@ func TestShutdown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	s, err := session.New(ctx, "/tmp/test-workspace", pushMockServer(), nil)
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, pushMockServer(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

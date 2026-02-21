@@ -13,7 +13,7 @@ func TestProcessLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	proc, err := transport.Start(ctx, []string{"cat"}, nil, nil)
+	proc, err := transport.Start(ctx, []string{"cat"}, "", nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestCallResponseRoundTrip(t *testing.T) {
 				fi
 			fi
 		done`,
-	}, nil, nil)
+	}, "", nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestNotificationReceiving(t *testing.T) {
 				fi
 			fi
 		done`,
-	}, func(method string, params json.RawMessage) {
+	}, "", func(method string, params json.RawMessage) {
 		notifyCh <- method
 	}, nil)
 	if err != nil {
@@ -162,7 +162,7 @@ func TestProcessCrash(t *testing.T) {
 	defer cancel()
 
 	// Start a process that exits immediately.
-	proc, err := transport.Start(ctx, []string{"bash", "-c", "exit 0"}, nil, nil)
+	proc, err := transport.Start(ctx, []string{"bash", "-c", "exit 0"}, "", nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestContextCancellation(t *testing.T) {
 	defer cancel()
 
 	// Start a process that never responds.
-	proc, err := transport.Start(ctx, []string{"sleep", "60"}, nil, nil)
+	proc, err := transport.Start(ctx, []string{"sleep", "60"}, "", nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -202,13 +202,65 @@ func TestContextCancellation(t *testing.T) {
 	_ = proc.Close(closeCtx)
 }
 
+// TestNonStandardResponseFields verifies that responses containing non-standard
+// JSON-RPC fields (like Sorbet's "requestMethod") are handled without error.
+func TestNonStandardResponseFields(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Mock server that includes a non-standard "requestMethod" field in
+	// responses, matching Sorbet's actual behavior.
+	proc, err := transport.Start(ctx, []string{
+		"bash", "-c",
+		`while IFS= read -r line; do
+			if [[ "$line" =~ ^Content-Length:\ ([0-9]+) ]]; then
+				len="${BASH_REMATCH[1]}"
+				read -r blank
+				body=$(head -c "$len")
+				id=$(echo "$body" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('id',''))")
+				method=$(echo "$body" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('method',''))")
+				if [ "$method" = "shutdown" ]; then
+					response='{"jsonrpc":"2.0","result":null,"id":'$id',"requestMethod":"shutdown"}'
+					printf "Content-Length: %d\r\n\r\n%s" "${#response}" "$response"
+				elif [ "$method" = "exit" ]; then
+					exit 0
+				elif [ "$method" = "test/echo" ]; then
+					params=$(echo "$body" | python3 -c "import sys,json; print(json.dumps(json.loads(sys.stdin.read()).get('params',{})))")
+					response='{"jsonrpc":"2.0","result":'"$params"',"id":'$id',"requestMethod":"test/echo"}'
+					printf "Content-Length: %d\r\n\r\n%s" "${#response}" "$response"
+				fi
+			fi
+		done`,
+	}, "", nil, nil)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer closeCancel()
+		proc.Close(closeCtx)
+	}()
+
+	type echoParams struct {
+		Message string `json:"message"`
+	}
+	var result echoParams
+	err = proc.Call(ctx, "test/echo", &echoParams{Message: "hello"}, &result)
+	if err != nil {
+		t.Fatalf("Call failed (non-standard fields should be tolerated): %v", err)
+	}
+	if result.Message != "hello" {
+		t.Errorf("got message %q, want %q", result.Message, "hello")
+	}
+}
+
 func TestNotifySending(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Start a process that reads notifications.
 	// Use cat so it just consumes input.
-	proc, err := transport.Start(ctx, []string{"cat"}, nil, nil)
+	proc, err := transport.Start(ctx, []string{"cat"}, "", nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
