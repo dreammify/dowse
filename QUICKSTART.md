@@ -55,6 +55,32 @@ command = ["typescript-language-server", "--stdio"]
 EOF
 ```
 
+## Set Up Claude Code Hook
+
+Add a `PostToolUse` hook to `~/.claude/settings.json` so Claude sees LSP diagnostics immediately after every file edit:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dowse diagnostics --claude-hook"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+If you already have a `~/.claude/settings.json`, merge the `hooks` key into it. You can also add this to a project-level `.claude/settings.json` instead.
+
+See [docs/hooks.md](docs/hooks.md) for details on how the hook works.
+
 ## Run
 
 ```bash
