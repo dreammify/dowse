@@ -1233,6 +1233,11 @@ func globalConfigPath() string {
 	return filepath.Join(dowseHome(), "config.toml")
 }
 
+// GlobalConfigPath returns the path to the global Dowse config file.
+func GlobalConfigPath() string {
+	return globalConfigPath()
+}
+
 // DefaultSocketPath returns the default daemon socket path.
 func DefaultSocketPath() string {
 	return filepath.Join(dowseHome(), "dowse.sock")

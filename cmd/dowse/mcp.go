@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/dreammify/dowse/internal/config"
 	"github.com/dreammify/dowse/internal/daemon"
 	"github.com/dreammify/dowse/internal/mcpserver"
 	"github.com/spf13/cobra"
@@ -29,8 +30,16 @@ func newMcpCmd() *cobra.Command {
 				}
 			}
 
+			// Load global config for MCP tool filtering. Errors are non-fatal.
+			var allowedTools []string
+			globalPath := daemon.GlobalConfigPath()
+			cfg, err := config.LoadWithPaths(globalPath, "")
+			if err == nil && cfg != nil {
+				allowedTools = cfg.ExposedTools()
+			}
+
 			client := mcpserver.NewHTTPDaemonClient(socketPath)
-			server := mcpserver.New(client)
+			server := mcpserver.New(client, allowedTools)
 			return server.Serve(cmd.Context())
 		},
 	}

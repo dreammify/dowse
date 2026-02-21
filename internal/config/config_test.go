@@ -616,6 +616,112 @@ level = "hint"
 	}
 }
 
+func TestMCPConfigParsing(t *testing.T) {
+	dir := t.TempDir()
+	globalPath := writeFile(t, dir, "global.toml", `
+[mcp]
+tools = ["get_diagnostics", "get_definition"]
+
+[[lsp]]
+extensions = [".go"]
+command = ["gopls", "serve"]
+`)
+
+	cfg, err := LoadWithPaths(globalPath, "")
+	if err != nil {
+		t.Fatalf("LoadWithPaths: %v", err)
+	}
+
+	tools := cfg.ExposedTools()
+	if len(tools) != 2 {
+		t.Fatalf("ExposedTools() count = %d, want 2", len(tools))
+	}
+	if tools[0] != "get_diagnostics" || tools[1] != "get_definition" {
+		t.Errorf("ExposedTools() = %v, want [get_diagnostics get_definition]", tools)
+	}
+}
+
+func TestMCPConfigAbsent(t *testing.T) {
+	dir := t.TempDir()
+	globalPath := writeFile(t, dir, "global.toml", `
+[[lsp]]
+extensions = [".go"]
+command = ["gopls", "serve"]
+`)
+
+	cfg, err := LoadWithPaths(globalPath, "")
+	if err != nil {
+		t.Fatalf("LoadWithPaths: %v", err)
+	}
+
+	if cfg.MCP != nil {
+		t.Errorf("expected nil MCP config, got %+v", cfg.MCP)
+	}
+	if tools := cfg.ExposedTools(); tools != nil {
+		t.Errorf("ExposedTools() = %v, want nil", tools)
+	}
+}
+
+func TestMCPConfigMerge(t *testing.T) {
+	dir := t.TempDir()
+	globalPath := writeFile(t, dir, "global.toml", `
+[mcp]
+tools = ["get_diagnostics"]
+
+[[lsp]]
+extensions = [".go"]
+command = ["gopls", "serve"]
+`)
+	workspacePath := writeFile(t, dir, "workspace.toml", `
+[mcp]
+tools = ["get_definition", "get_diagnostics_batch"]
+
+[[lsp]]
+extensions = [".kt"]
+command = ["kotlin-lsp"]
+`)
+
+	cfg, err := LoadWithPaths(globalPath, workspacePath)
+	if err != nil {
+		t.Fatalf("LoadWithPaths: %v", err)
+	}
+
+	tools := cfg.ExposedTools()
+	if len(tools) != 2 {
+		t.Fatalf("ExposedTools() count = %d, want 2 (workspace override)", len(tools))
+	}
+	if tools[0] != "get_definition" || tools[1] != "get_diagnostics_batch" {
+		t.Errorf("ExposedTools() = %v, want [get_definition get_diagnostics_batch]", tools)
+	}
+}
+
+func TestMCPConfigMergeGlobalUsedWhenWorkspaceAbsent(t *testing.T) {
+	dir := t.TempDir()
+	globalPath := writeFile(t, dir, "global.toml", `
+[mcp]
+tools = ["get_diagnostics"]
+
+[[lsp]]
+extensions = [".go"]
+command = ["gopls", "serve"]
+`)
+	workspacePath := writeFile(t, dir, "workspace.toml", `
+[[lsp]]
+extensions = [".kt"]
+command = ["kotlin-lsp"]
+`)
+
+	cfg, err := LoadWithPaths(globalPath, workspacePath)
+	if err != nil {
+		t.Fatalf("LoadWithPaths: %v", err)
+	}
+
+	tools := cfg.ExposedTools()
+	if len(tools) != 1 || tools[0] != "get_diagnostics" {
+		t.Errorf("ExposedTools() = %v, want [get_diagnostics] (from global)", tools)
+	}
+}
+
 func assertLSP(t *testing.T, got LSPConfig, wantExts, wantCmd []string) {
 	t.Helper()
 	assertStringSlice(t, "extensions", got.Extensions, wantExts)

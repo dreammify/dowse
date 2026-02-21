@@ -103,7 +103,7 @@ func marshalJRPC(t *testing.T, id, method string, params []byte) []byte {
 }
 
 func TestInitialize(t *testing.T) {
-	server := New(&mockDaemonClient{})
+	server := New(&mockDaemonClient{}, nil)
 
 	result, err := callMethod(t, server, "initialize", InitializeParams{
 		ProtocolVersion: "2025-03-26",
@@ -133,7 +133,7 @@ func TestInitialize(t *testing.T) {
 }
 
 func TestToolsList(t *testing.T) {
-	server := New(&mockDaemonClient{})
+	server := New(&mockDaemonClient{}, nil)
 
 	result, err := callMethod(t, server, "tools/list", nil)
 	if err != nil {
@@ -145,8 +145,8 @@ func TestToolsList(t *testing.T) {
 		t.Fatalf("unmarshaling result: %v", err)
 	}
 
-	if len(listResult.Tools) != 3 {
-		t.Fatalf("tool count = %d, want 3", len(listResult.Tools))
+	if len(listResult.Tools) != 2 {
+		t.Fatalf("tool count = %d, want 2", len(listResult.Tools))
 	}
 
 	toolsByName := map[string]ToolDef{}
@@ -154,7 +154,7 @@ func TestToolsList(t *testing.T) {
 		toolsByName[tool.Name] = tool
 	}
 
-	// Verify get_diagnostics tool schema.
+	// Verify get_diagnostics tool schema (accepts files array).
 	diagTool, ok := toolsByName["get_diagnostics"]
 	if !ok {
 		t.Fatal("missing tool get_diagnostics")
@@ -162,24 +162,9 @@ func TestToolsList(t *testing.T) {
 	if diagTool.InputSchema.Type != "object" {
 		t.Errorf("get_diagnostics schema type = %q, want %q", diagTool.InputSchema.Type, "object")
 	}
-	if _, hasFile := diagTool.InputSchema.Properties["file"]; !hasFile {
-		t.Error("get_diagnostics missing 'file' property")
-	}
-	if len(diagTool.InputSchema.Required) != 1 || diagTool.InputSchema.Required[0] != "file" {
-		t.Errorf("get_diagnostics required = %v, want [file]", diagTool.InputSchema.Required)
-	}
-	if diagTool.Description == "" {
-		t.Error("get_diagnostics has empty description")
-	}
-
-	// Verify get_diagnostics_batch tool schema.
-	batchTool, ok := toolsByName["get_diagnostics_batch"]
-	if !ok {
-		t.Fatal("missing tool get_diagnostics_batch")
-	}
-	filesProp, hasFiles := batchTool.InputSchema.Properties["files"]
+	filesProp, hasFiles := diagTool.InputSchema.Properties["files"]
 	if !hasFiles {
-		t.Fatal("get_diagnostics_batch missing 'files' property")
+		t.Fatal("get_diagnostics missing 'files' property")
 	}
 	if filesProp.Type != "array" {
 		t.Errorf("files property type = %q, want %q", filesProp.Type, "array")
@@ -190,8 +175,11 @@ func TestToolsList(t *testing.T) {
 	if filesProp.Items.Type != "string" {
 		t.Errorf("files items type = %q, want %q", filesProp.Items.Type, "string")
 	}
-	if len(batchTool.InputSchema.Required) != 1 || batchTool.InputSchema.Required[0] != "files" {
-		t.Errorf("get_diagnostics_batch required = %v, want [files]", batchTool.InputSchema.Required)
+	if len(diagTool.InputSchema.Required) != 1 || diagTool.InputSchema.Required[0] != "files" {
+		t.Errorf("get_diagnostics required = %v, want [files]", diagTool.InputSchema.Required)
+	}
+	if diagTool.Description == "" {
+		t.Error("get_diagnostics has empty description")
 	}
 
 	// Verify get_definition tool schema.
@@ -218,13 +206,13 @@ func TestToolsList(t *testing.T) {
 
 func TestToolsCallGetDiagnostics(t *testing.T) {
 	mock := &mockDaemonClient{
-		diagnosticsResult: []byte(`{"file":"/tmp/main.go","diagnostics":[],"error_count":0}`),
+		batchDiagnosticsResult: []byte(`{"files":[],"total_errors":0,"total_warnings":0}`),
 	}
-	server := New(mock)
+	server := New(mock, nil)
 
 	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
 		Name:      "get_diagnostics",
-		Arguments: json.RawMessage(`{"file":"/tmp/main.go"}`),
+		Arguments: json.RawMessage(`{"files":["/tmp/main.go"]}`),
 	})
 	if err != nil {
 		t.Fatalf("tools/call: %v", err)
@@ -244,76 +232,19 @@ func TestToolsCallGetDiagnostics(t *testing.T) {
 	if callResult.Content[0].Type != "text" {
 		t.Errorf("content type = %q, want %q", callResult.Content[0].Type, "text")
 	}
-	if callResult.Content[0].Text != string(mock.diagnosticsResult) {
-		t.Errorf("content text = %q, want %q", callResult.Content[0].Text, string(mock.diagnosticsResult))
-	}
-	if mock.lastFile != "/tmp/main.go" {
-		t.Errorf("daemon called with file = %q, want %q", mock.lastFile, "/tmp/main.go")
-	}
-}
-
-func TestToolsCallGetDiagnosticsBatch(t *testing.T) {
-	mock := &mockDaemonClient{
-		batchDiagnosticsResult: []byte(`{"files":[],"total_errors":0,"total_warnings":0}`),
-	}
-	server := New(mock)
-
-	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
-		Name:      "get_diagnostics_batch",
-		Arguments: json.RawMessage(`{"files":["/tmp/a.go","/tmp/b.go"]}`),
-	})
-	if err != nil {
-		t.Fatalf("tools/call: %v", err)
-	}
-
-	var callResult ToolsCallResult
-	if err := json.Unmarshal(result, &callResult); err != nil {
-		t.Fatalf("unmarshaling result: %v", err)
-	}
-
-	if callResult.IsError {
-		t.Error("expected isError=false, got true")
-	}
-	if len(callResult.Content) != 1 {
-		t.Fatalf("content blocks = %d, want 1", len(callResult.Content))
-	}
 	if callResult.Content[0].Text != string(mock.batchDiagnosticsResult) {
-		t.Errorf("content text mismatch")
+		t.Errorf("content text = %q, want %q", callResult.Content[0].Text, string(mock.batchDiagnosticsResult))
 	}
-	if len(mock.lastFiles) != 2 || mock.lastFiles[0] != "/tmp/a.go" || mock.lastFiles[1] != "/tmp/b.go" {
-		t.Errorf("daemon called with files = %v, want [/tmp/a.go /tmp/b.go]", mock.lastFiles)
-	}
-}
-
-func TestToolsCallMissingFile(t *testing.T) {
-	server := New(&mockDaemonClient{})
-
-	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
-		Name:      "get_diagnostics",
-		Arguments: json.RawMessage(`{}`),
-	})
-	if err != nil {
-		t.Fatalf("tools/call: %v", err)
-	}
-
-	var callResult ToolsCallResult
-	if err := json.Unmarshal(result, &callResult); err != nil {
-		t.Fatalf("unmarshaling result: %v", err)
-	}
-
-	if !callResult.IsError {
-		t.Error("expected isError=true, got false")
-	}
-	if callResult.Content[0].Text != "missing required parameter: file" {
-		t.Errorf("error text = %q", callResult.Content[0].Text)
+	if len(mock.lastFiles) != 1 || mock.lastFiles[0] != "/tmp/main.go" {
+		t.Errorf("daemon called with files = %v, want [/tmp/main.go]", mock.lastFiles)
 	}
 }
 
 func TestToolsCallMissingFiles(t *testing.T) {
-	server := New(&mockDaemonClient{})
+	server := New(&mockDaemonClient{}, nil)
 
 	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
-		Name:      "get_diagnostics_batch",
+		Name:      "get_diagnostics",
 		Arguments: json.RawMessage(`{}`),
 	})
 	if err != nil {
@@ -335,13 +266,13 @@ func TestToolsCallMissingFiles(t *testing.T) {
 
 func TestToolsCallDaemonError(t *testing.T) {
 	mock := &mockDaemonClient{
-		diagnosticsErr: fmt.Errorf("connection refused"),
+		batchDiagnosticsErr: fmt.Errorf("connection refused"),
 	}
-	server := New(mock)
+	server := New(mock, nil)
 
 	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
 		Name:      "get_diagnostics",
-		Arguments: json.RawMessage(`{"file":"/tmp/main.go"}`),
+		Arguments: json.RawMessage(`{"files":["/tmp/main.go"]}`),
 	})
 	if err != nil {
 		t.Fatalf("tools/call: %v", err)
@@ -360,35 +291,8 @@ func TestToolsCallDaemonError(t *testing.T) {
 	}
 }
 
-func TestToolsCallBatchDaemonError(t *testing.T) {
-	mock := &mockDaemonClient{
-		batchDiagnosticsErr: fmt.Errorf("timeout exceeded"),
-	}
-	server := New(mock)
-
-	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
-		Name:      "get_diagnostics_batch",
-		Arguments: json.RawMessage(`{"files":["/tmp/a.go"]}`),
-	})
-	if err != nil {
-		t.Fatalf("tools/call: %v", err)
-	}
-
-	var callResult ToolsCallResult
-	if err := json.Unmarshal(result, &callResult); err != nil {
-		t.Fatalf("unmarshaling result: %v", err)
-	}
-
-	if !callResult.IsError {
-		t.Error("expected isError=true, got false")
-	}
-	if !strings.Contains(callResult.Content[0].Text, "timeout exceeded") {
-		t.Errorf("error text = %q, want substring %q", callResult.Content[0].Text, "timeout exceeded")
-	}
-}
-
 func TestToolsCallUnknownTool(t *testing.T) {
-	server := New(&mockDaemonClient{})
+	server := New(&mockDaemonClient{}, nil)
 
 	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
 		Name:      "nonexistent",
@@ -418,14 +322,14 @@ func TestE2EInvalidJSONArguments(t *testing.T) {
 	var callResult ToolsCallResult
 	err := client.CallResult(ctx, "tools/call", ToolsCallParams{
 		Name:      "get_diagnostics",
-		Arguments: json.RawMessage(`{"file": 12345}`),
+		Arguments: json.RawMessage(`{"files": "not-an-array"}`),
 	}, &callResult)
 	if err != nil {
 		t.Fatalf("tools/call should not return JSON-RPC error: %v", err)
 	}
 
-	// file is present but wrong type — json.Unmarshal succeeds, but the value
-	// becomes "" (zero value for string), triggering missing-parameter error.
+	// files is present but wrong type — json.Unmarshal fails, triggering
+	// an invalid arguments error.
 	if !callResult.IsError {
 		t.Error("expected isError=true for wrong-type argument")
 	}
@@ -461,7 +365,7 @@ func TestIsErrorOmittedWhenFalse(t *testing.T) {
 // startTestServer creates an MCP server and a jrpc2.Client connected via in-memory channels.
 func startTestServer(t *testing.T, mock *mockDaemonClient) *jrpc2.Client {
 	t.Helper()
-	server := New(mock)
+	server := New(mock, nil)
 	clientCh, serverCh := channel.Direct()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -507,15 +411,15 @@ func TestE2EInitializeAndToolsList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tools/list: %v", err)
 	}
-	if len(listResult.Tools) != 3 {
-		t.Errorf("tool count = %d, want 3", len(listResult.Tools))
+	if len(listResult.Tools) != 2 {
+		t.Errorf("tool count = %d, want 2", len(listResult.Tools))
 	}
 }
 
 func TestE2EGetDiagnosticsHappyPath(t *testing.T) {
-	diagJSON := `{"file":"/tmp/main.go","diagnostics":[{"message":"unused variable"}],"error_count":1,"warning_count":0}`
+	diagJSON := `{"files":[{"file":"/tmp/main.go","diagnostics":[{"message":"unused variable"}]}],"total_errors":1,"total_warnings":0}`
 	mock := &mockDaemonClient{
-		diagnosticsResult: []byte(diagJSON),
+		batchDiagnosticsResult: []byte(diagJSON),
 	}
 	client := startTestServer(t, mock)
 	ctx := context.Background()
@@ -523,7 +427,7 @@ func TestE2EGetDiagnosticsHappyPath(t *testing.T) {
 	var callResult ToolsCallResult
 	err := client.CallResult(ctx, "tools/call", ToolsCallParams{
 		Name:      "get_diagnostics",
-		Arguments: json.RawMessage(`{"file":"/tmp/main.go"}`),
+		Arguments: json.RawMessage(`{"files":["/tmp/main.go"]}`),
 	}, &callResult)
 	if err != nil {
 		t.Fatalf("tools/call: %v", err)
@@ -538,42 +442,14 @@ func TestE2EGetDiagnosticsHappyPath(t *testing.T) {
 	if callResult.Content[0].Text != diagJSON {
 		t.Errorf("content text = %q, want %q", callResult.Content[0].Text, diagJSON)
 	}
-	if mock.lastFile != "/tmp/main.go" {
-		t.Errorf("daemon file = %q, want %q", mock.lastFile, "/tmp/main.go")
-	}
-}
-
-func TestE2EGetDiagnosticsBatchHappyPath(t *testing.T) {
-	batchJSON := `{"files":[{"file":"/tmp/a.go","diagnostics":[],"error_count":0,"warning_count":0}],"total_errors":0,"total_warnings":0}`
-	mock := &mockDaemonClient{
-		batchDiagnosticsResult: []byte(batchJSON),
-	}
-	client := startTestServer(t, mock)
-	ctx := context.Background()
-
-	var callResult ToolsCallResult
-	err := client.CallResult(ctx, "tools/call", ToolsCallParams{
-		Name:      "get_diagnostics_batch",
-		Arguments: json.RawMessage(`{"files":["/tmp/a.go"]}`),
-	}, &callResult)
-	if err != nil {
-		t.Fatalf("tools/call: %v", err)
-	}
-
-	if callResult.IsError {
-		t.Errorf("expected success, got error: %s", callResult.Content[0].Text)
-	}
-	if callResult.Content[0].Text != batchJSON {
-		t.Errorf("content text mismatch")
-	}
-	if len(mock.lastFiles) != 1 || mock.lastFiles[0] != "/tmp/a.go" {
-		t.Errorf("daemon files = %v", mock.lastFiles)
+	if len(mock.lastFiles) != 1 || mock.lastFiles[0] != "/tmp/main.go" {
+		t.Errorf("daemon files = %v, want [/tmp/main.go]", mock.lastFiles)
 	}
 }
 
 func TestE2EDaemonErrorReturnsMCPToolError(t *testing.T) {
 	mock := &mockDaemonClient{
-		diagnosticsErr: fmt.Errorf("session init failed"),
+		batchDiagnosticsErr: fmt.Errorf("session init failed"),
 	}
 	client := startTestServer(t, mock)
 	ctx := context.Background()
@@ -581,7 +457,7 @@ func TestE2EDaemonErrorReturnsMCPToolError(t *testing.T) {
 	var callResult ToolsCallResult
 	err := client.CallResult(ctx, "tools/call", ToolsCallParams{
 		Name:      "get_diagnostics",
-		Arguments: json.RawMessage(`{"file":"/tmp/main.go"}`),
+		Arguments: json.RawMessage(`{"files":["/tmp/main.go"]}`),
 	}, &callResult)
 	if err != nil {
 		t.Fatalf("tools/call should not return JSON-RPC error: %v", err)
@@ -611,7 +487,7 @@ func TestE2EMissingParamReturnsMCPToolError(t *testing.T) {
 	if !callResult.IsError {
 		t.Error("expected isError=true")
 	}
-	if callResult.Content[0].Text != "missing required parameter: file" {
+	if callResult.Content[0].Text != "missing required parameter: files" {
 		t.Errorf("error text = %q", callResult.Content[0].Text)
 	}
 }
@@ -630,17 +506,16 @@ func TestE2EUnknownMethodReturnsJRPCError(t *testing.T) {
 
 func TestE2EMultipleSequentialCalls(t *testing.T) {
 	mock := &mockDaemonClient{
-		diagnosticsResult:      []byte(`{"file":"a","diagnostics":[]}`),
 		batchDiagnosticsResult: []byte(`{"files":[],"total_errors":0,"total_warnings":0}`),
 	}
 	client := startTestServer(t, mock)
 	ctx := context.Background()
 
-	// Call get_diagnostics, then batch, then get_diagnostics again.
+	// Call get_diagnostics multiple times sequentially.
 	for i, params := range []ToolsCallParams{
-		{Name: "get_diagnostics", Arguments: json.RawMessage(`{"file":"/tmp/first.go"}`)},
-		{Name: "get_diagnostics_batch", Arguments: json.RawMessage(`{"files":["/tmp/batch.go"]}`)},
-		{Name: "get_diagnostics", Arguments: json.RawMessage(`{"file":"/tmp/second.go"}`)},
+		{Name: "get_diagnostics", Arguments: json.RawMessage(`{"files":["/tmp/first.go"]}`)},
+		{Name: "get_diagnostics", Arguments: json.RawMessage(`{"files":["/tmp/batch.go"]}`)},
+		{Name: "get_diagnostics", Arguments: json.RawMessage(`{"files":["/tmp/second.go"]}`)},
 	} {
 		var callResult ToolsCallResult
 		err := client.CallResult(ctx, "tools/call", params, &callResult)
@@ -652,9 +527,9 @@ func TestE2EMultipleSequentialCalls(t *testing.T) {
 		}
 	}
 
-	// Verify the last single-file call got the right argument.
-	if mock.lastFile != "/tmp/second.go" {
-		t.Errorf("last file = %q, want %q", mock.lastFile, "/tmp/second.go")
+	// Verify the last call got the right argument.
+	if len(mock.lastFiles) != 1 || mock.lastFiles[0] != "/tmp/second.go" {
+		t.Errorf("last files = %v, want [/tmp/second.go]", mock.lastFiles)
 	}
 }
 
@@ -804,7 +679,7 @@ func TestToolsCallGetDefinition(t *testing.T) {
 	mock := &mockDaemonClient{
 		definitionResult: []byte(defJSON),
 	}
-	server := New(mock)
+	server := New(mock, nil)
 
 	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
 		Name:      "get_definition",
@@ -840,7 +715,7 @@ func TestToolsCallGetDefinition(t *testing.T) {
 }
 
 func TestToolsCallGetDefinitionMissingParams(t *testing.T) {
-	server := New(&mockDaemonClient{})
+	server := New(&mockDaemonClient{}, nil)
 
 	tests := []struct {
 		name     string
@@ -881,7 +756,7 @@ func TestToolsCallGetDefinitionDaemonError(t *testing.T) {
 	mock := &mockDaemonClient{
 		definitionErr: fmt.Errorf("session not ready"),
 	}
-	server := New(mock)
+	server := New(mock, nil)
 
 	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
 		Name:      "get_definition",
@@ -930,7 +805,7 @@ func TestE2EGetDefinitionHappyPath(t *testing.T) {
 }
 
 func TestToolsCallGetDefinitionZeroLineCharacter(t *testing.T) {
-	server := New(&mockDaemonClient{})
+	server := New(&mockDaemonClient{}, nil)
 
 	tests := []struct {
 		name     string
@@ -965,6 +840,129 @@ func TestToolsCallGetDefinitionZeroLineCharacter(t *testing.T) {
 				t.Errorf("error text = %q, want %q", callResult.Content[0].Text, testCase.wantText)
 			}
 		})
+	}
+}
+
+// --- Tool filtering tests ---
+
+func TestEmbeddedToolDefsLoaded(t *testing.T) {
+	if len(allToolDefs) != 2 {
+		t.Fatalf("allToolDefs count = %d, want 2", len(allToolDefs))
+	}
+	for _, def := range allToolDefs {
+		if def.Name == "" {
+			t.Error("tool def has empty name")
+		}
+		if def.Description == "" {
+			t.Errorf("tool %q has empty description", def.Name)
+		}
+		if def.InputSchema.Type != "object" {
+			t.Errorf("tool %q schema type = %q, want %q", def.Name, def.InputSchema.Type, "object")
+		}
+	}
+}
+
+func TestToolsListWithFilter(t *testing.T) {
+	server := New(&mockDaemonClient{}, []string{"get_diagnostics"})
+
+	result, err := callMethod(t, server, "tools/list", nil)
+	if err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+
+	var listResult ToolsListResult
+	if err := json.Unmarshal(result, &listResult); err != nil {
+		t.Fatalf("unmarshaling result: %v", err)
+	}
+
+	if len(listResult.Tools) != 1 {
+		t.Fatalf("tool count = %d, want 1", len(listResult.Tools))
+	}
+	if listResult.Tools[0].Name != "get_diagnostics" {
+		t.Errorf("tool name = %q, want %q", listResult.Tools[0].Name, "get_diagnostics")
+	}
+}
+
+func TestToolsCallFilteredOutTool(t *testing.T) {
+	server := New(&mockDaemonClient{}, []string{"get_diagnostics"})
+
+	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
+		Name:      "get_definition",
+		Arguments: json.RawMessage(`{"file":"/tmp/a.go","line":1,"character":1}`),
+	})
+	if err != nil {
+		t.Fatalf("tools/call: %v", err)
+	}
+
+	var callResult ToolsCallResult
+	if err := json.Unmarshal(result, &callResult); err != nil {
+		t.Fatalf("unmarshaling result: %v", err)
+	}
+
+	if !callResult.IsError {
+		t.Error("expected isError=true for filtered-out tool")
+	}
+	if callResult.Content[0].Text != "tool not enabled: get_definition" {
+		t.Errorf("error text = %q", callResult.Content[0].Text)
+	}
+}
+
+func TestToolsCallAllowedTool(t *testing.T) {
+	mock := &mockDaemonClient{
+		batchDiagnosticsResult: []byte(`{"files":[],"total_errors":0}`),
+	}
+	server := New(mock, []string{"get_diagnostics"})
+
+	result, err := callMethod(t, server, "tools/call", ToolsCallParams{
+		Name:      "get_diagnostics",
+		Arguments: json.RawMessage(`{"files":["/tmp/main.go"]}`),
+	})
+	if err != nil {
+		t.Fatalf("tools/call: %v", err)
+	}
+
+	var callResult ToolsCallResult
+	if err := json.Unmarshal(result, &callResult); err != nil {
+		t.Fatalf("unmarshaling result: %v", err)
+	}
+
+	if callResult.IsError {
+		t.Errorf("expected success, got error: %s", callResult.Content[0].Text)
+	}
+}
+
+func startTestServerWithFilter(t *testing.T, mock *mockDaemonClient, allowedTools []string) *jrpc2.Client {
+	t.Helper()
+	server := New(mock, allowedTools)
+	clientCh, serverCh := channel.Direct()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	go func() {
+		_ = server.ServeChannel(ctx, serverCh)
+	}()
+
+	client := jrpc2.NewClient(clientCh, nil)
+	t.Cleanup(func() { client.Close() })
+	return client
+}
+
+func TestE2EToolsListWithFilter(t *testing.T) {
+	client := startTestServerWithFilter(t, &mockDaemonClient{}, []string{"get_definition"})
+	ctx := context.Background()
+
+	var listResult ToolsListResult
+	err := client.CallResult(ctx, "tools/list", nil, &listResult)
+	if err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+
+	if len(listResult.Tools) != 1 {
+		t.Fatalf("tool count = %d, want 1", len(listResult.Tools))
+	}
+	if listResult.Tools[0].Name != "get_definition" {
+		t.Errorf("tool name = %q, want %q", listResult.Tools[0].Name, "get_definition")
 	}
 }
 

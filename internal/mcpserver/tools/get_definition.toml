@@ -1,0 +1,17 @@
+name = "get_definition"
+description = "Goes to definition for a symbol at a given position in a file"
+
+[parameters.file]
+type = "string"
+description = "Absolute path to the file"
+required = true
+
+[parameters.line]
+type = "integer"
+description = "Line number (1-indexed)"
+required = true
+
+[parameters.character]
+type = "integer"
+description = "Character offset within the line (1-indexed)"
+required = true
