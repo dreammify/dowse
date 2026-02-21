@@ -7,10 +7,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+
 func main() {
 	root := &cobra.Command{
-		Use:   "dowse",
-		Short: "LSP bridge for AI agents",
+		Use:     "dowse",
+		Short:   "LSP bridge for AI agents",
+		Version: version,
 	}
 	root.AddCommand(
 		newStartCmd(),
