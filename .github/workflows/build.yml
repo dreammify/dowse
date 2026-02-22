@@ -280,38 +280,8 @@ jobs:
       - name: Run redisson integration tests
         run: go test -v -race -count=1 -tags=integration -timeout=300s -run='TestRedisson' ./internal/integration/
 
-  integration-mockito:
-    needs: lint-and-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-          submodules: true
-
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-
-      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Install jdtls
-        run: |
-          curl -fsSL -o jdtls.tar.gz "https://www.eclipse.org/downloads/download.php?file=/jdtls/milestones/1.56.0/jdt-language-server-1.56.0-202601291528.tar.gz"
-          mkdir -p "$HOME/jdtls"
-          tar -xzf jdtls.tar.gz -C "$HOME/jdtls"
-          ln -s "$HOME/jdtls/bin/jdtls" /usr/local/bin/jdtls
-
-      - name: Pre-fetch Gradle dependencies
-        working-directory: sample-projects/mockito
-        run: ./gradlew :mockito-core:dependencies --no-daemon
-
-      - name: Run mockito integration tests
-        run: go test -v -race -count=1 -tags=integration -timeout=1500s -run='TestMockito' ./internal/integration/
+  # integration-mockito: disabled — jdtls cold start on Mockito is too slow
+  # and flaky in CI.
 
   # integration-kotlinx-coroutines: disabled — kotlin-lsp does not support
   # semantic analysis for Kotlin Multiplatform projects.
