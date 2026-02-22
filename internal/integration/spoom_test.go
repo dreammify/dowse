@@ -57,7 +57,7 @@ func setupSpoomDaemon(t *testing.T) *dowseInstance {
 
 		// Write .dowse.toml into the spoom project root.
 		spoomTomlPath = filepath.Join(projectDir, ".dowse.toml")
-		tomlContent := "[[lsp]]\nextensions = [\".rb\", \".rbi\"]\ncommand = [\"srb\", \"tc\", \"--lsp\", \"--disable-watchman\"]\n"
+		tomlContent := "[[lsp]]\nextensions = [\".rb\", \".rbi\"]\ncommand = [\"env\", \"SRB_SKIP_GEM_RBIS=1\", \"srb\", \"tc\", \"--lsp\", \"--disable-watchman\"]\n"
 		if err := os.WriteFile(spoomTomlPath, []byte(tomlContent), 0o644); err != nil {
 			spoomSetupErr = fmt.Errorf("writing .dowse.toml: %v", err)
 			return
