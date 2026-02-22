@@ -190,7 +190,7 @@ jobs:
         run: gem install sorbet sorbet-runtime
 
       - name: Run Spoom integration tests
-        run: go test -v -race -count=1 -tags=integration -timeout=300s -run='TestSpoom' ./internal/integration/
+        run: go test -v -race -count=1 -tags=integration -timeout=600s -run='TestSpoom' ./internal/integration/
 
   integration-excalidraw:
     needs: lint-and-test

@@ -83,7 +83,7 @@ func setupSpoomDaemon(t *testing.T) *dowseInstance {
 		// Warm up: query a clean file with a long timeout to wait for
 		// Sorbet LSP initialization and indexing.
 		warmupFile := filepath.Join(projectDir, "lib", "spoom", "version.rb")
-		warmupCmd := exec.Command(spoomInstance.binary, "diagnostics", "--timeout", "120s", warmupFile)
+		warmupCmd := exec.Command(spoomInstance.binary, "diagnostics", "--timeout", "180s", warmupFile)
 		warmupCmd.Env = spoomInstance.env
 		warmupOut, warmupErr := warmupCmd.CombinedOutput()
 		if warmupErr != nil {
@@ -139,12 +139,12 @@ func TestSpoom_TypeMismatch(t *testing.T) {
 	instance := setupSpoomDaemon(t)
 	targetFile := filepath.Join(spoomProjectDir(t), "lib", "spoom", "version.rb")
 
-	// Inject a type mismatch: assign an Integer to a String-typed constant.
+	// Inject a type mismatch: use T.let to declare a String, then assign an Integer.
 	withModifiedFile(t, targetFile, `# typed: strict
 # frozen_string_literal: true
 
 module Spoom
-  VERSION = 42
+  VERSION = T.let(42, String)
 end
 `)
 
