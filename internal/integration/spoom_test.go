@@ -156,7 +156,7 @@ end
 	found := false
 	for _, diag := range result.Diagnostics {
 		lower := strings.ToLower(diag.Message)
-		if strings.Contains(lower, "expected") || strings.Contains(lower, "type mismatch") || strings.Contains(lower, "incompatible") || strings.Contains(lower, "7002") {
+		if strings.Contains(lower, "expected") || strings.Contains(lower, "type mismatch") || strings.Contains(lower, "asserted type") || strings.Contains(lower, "7007") {
 			found = true
 			break
 		}
