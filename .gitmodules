@@ -1,0 +1,27 @@
+[submodule "sample-projects/ripgrep"]
+	path = sample-projects/ripgrep
+	url = https://github.com/BurntSushi/ripgrep.git
+[submodule "sample-projects/pydantic"]
+	path = sample-projects/pydantic
+	url = https://github.com/pydantic/pydantic.git
+[submodule "sample-projects/excalidraw"]
+	path = sample-projects/excalidraw
+	url = https://github.com/excalidraw/excalidraw.git
+[submodule "sample-projects/zustand"]
+	path = sample-projects/zustand
+	url = https://github.com/pmndrs/zustand.git
+[submodule "sample-projects/redisson"]
+	path = sample-projects/redisson
+	url = https://github.com/redisson/redisson.git
+[submodule "sample-projects/mockito"]
+	path = sample-projects/mockito
+	url = https://github.com/mockito/mockito.git
+[submodule "sample-projects/kotlinx.coroutines"]
+	path = sample-projects/kotlinx.coroutines
+	url = https://github.com/Kotlin/kotlinx.coroutines.git
+[submodule "sample-projects/okhttp"]
+	path = sample-projects/okhttp
+	url = https://github.com/square/okhttp.git
+[submodule "sample-projects/spoom"]
+	path = sample-projects/spoom
+	url = https://github.com/Shopify/spoom.git
