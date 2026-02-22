@@ -22,3 +22,6 @@
 [submodule "sample-projects/okhttp"]
 	path = sample-projects/okhttp
 	url = https://github.com/square/okhttp.git
+[submodule "sample-projects/spoom"]
+	path = sample-projects/spoom
+	url = https://github.com/Shopify/spoom.git

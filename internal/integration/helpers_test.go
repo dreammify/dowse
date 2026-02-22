@@ -23,6 +23,7 @@ func TestMain(m *testing.M) {
 	teardownJdtls()
 	teardownTypeScript()
 	teardownSorbet()
+	teardownSpoom()
 	teardownExcalidraw()
 	teardownZustand()
 	teardownRedisson()
