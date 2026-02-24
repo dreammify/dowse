@@ -1,4 +1,4 @@
-# Dowse
+# <img width="60" height="60" alt="image" src="https://github.com/user-attachments/assets/46c258f7-67c4-4c07-811c-9da759e51891" /> Dowse
 
 [![Build](https://github.com/dreammify/dowse/actions/workflows/build.yml/badge.svg)](https://github.com/dreammify/dowse/actions/workflows/build.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dreammify/dowse)](https://goreportcard.com/report/github.com/dreammify/dowse)
