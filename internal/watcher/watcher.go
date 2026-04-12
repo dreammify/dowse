@@ -122,31 +122,57 @@ func (w *Watcher) addDirs(dir string) error {
 // debounced events are sent. Watch blocks until ctx is cancelled, at which
 // point the channel is closed and the underlying fsnotify watcher is shut down.
 func (w *Watcher) Watch(ctx context.Context) (<-chan Event, error) {
-	out := make(chan Event, 64)
+	filtered, _, err := w.WatchAll(ctx)
+	return filtered, err
+}
 
-	go w.loop(ctx, out)
+// WatchAll starts the event loop and returns two channels:
+//   - filtered: events for files matching the configured extensions (same as Watch)
+//   - all: every non-directory, non-gitignored file event regardless of extension
+//
+// Both channels share the same debounce infrastructure. The all channel enables
+// workspace/didChangeWatchedFiles notifications for build files (e.g., gradle).
+func (w *Watcher) WatchAll(ctx context.Context) (filtered <-chan Event, all <-chan Event, err error) {
+	filteredCh := make(chan Event, 64)
+	allCh := make(chan Event, 64)
 
-	return out, nil
+	go w.loopAll(ctx, filteredCh, allCh)
+
+	return filteredCh, allCh, nil
 }
 
 // pendingEvent tracks debounce state for a single path.
 type pendingEvent struct {
-	timer *time.Timer
-	kind  EventKind
+	timer    *time.Timer
+	kind     EventKind
+	filtered bool // whether this path matches extension filters
 }
 
-func (w *Watcher) loop(ctx context.Context, out chan<- Event) {
-	var mu sync.Mutex
-	pending := make(map[string]*pendingEvent)
+// loopState holds shared mutable state for the event loop, protected by mu.
+type loopState struct {
+	mu      sync.Mutex
+	pending map[string]*pendingEvent
+	closed  bool // set to true when the loop exits; prevents timer sends on closed channels
+}
+
+func (w *Watcher) loopAll(ctx context.Context, filtered chan<- Event, all chan<- Event) {
+	state := &loopState{
+		pending: make(map[string]*pendingEvent),
+	}
 
 	defer func() {
-		mu.Lock()
-		for _, pendingEv := range pending {
+		state.mu.Lock()
+		state.closed = true
+		for _, pendingEv := range state.pending {
 			pendingEv.timer.Stop()
 		}
-		mu.Unlock()
+		// Close channels under the lock to prevent timer goroutines
+		// from sending on closed channels. Timer goroutines check
+		// state.closed under the same lock before sending.
+		close(filtered)
+		close(all)
+		state.mu.Unlock()
 		w.fsw.Close()
-		close(out)
 	}()
 
 	for {
@@ -158,7 +184,7 @@ func (w *Watcher) loop(ctx context.Context, out chan<- Event) {
 			if !ok {
 				return
 			}
-			w.handleEvent(ctx, fsEvent, out, &mu, pending)
+			w.handleEventAll(ctx, fsEvent, filtered, all, state)
 
 		case err, ok := <-w.fsw.Errors:
 			if !ok {
@@ -169,12 +195,12 @@ func (w *Watcher) loop(ctx context.Context, out chan<- Event) {
 	}
 }
 
-func (w *Watcher) handleEvent(
+func (w *Watcher) handleEventAll(
 	ctx context.Context,
 	fsEvent fsnotify.Event,
-	out chan<- Event,
-	mu *sync.Mutex,
-	pending map[string]*pendingEvent,
+	filtered chan<- Event,
+	all chan<- Event,
+	state *loopState,
 ) {
 	path := fsEvent.Name
 
@@ -188,43 +214,58 @@ func (w *Watcher) handleEvent(
 		}
 	}
 
-	// Extension filter.
-	ext := filepath.Ext(path)
-	if _, ok := w.extensions[ext]; !ok {
-		return
-	}
-
-	// .gitignore filter.
+	// .gitignore filter (applies to both channels).
 	if w.isGitIgnored(ctx, path) {
 		return
 	}
+
+	// Extension filter determines which channels receive the event.
+	ext := filepath.Ext(path)
+	_, matchesExt := w.extensions[ext]
 
 	kind := classifyEvent(fsEvent)
 
 	// Debounce: reset the timer for this path. A Create followed by Write
 	// within the debounce window is still reported as Created.
-	mu.Lock()
-	if existing, ok := pending[path]; ok {
+	state.mu.Lock()
+	if existing, ok := state.pending[path]; ok {
 		existing.timer.Stop()
 		// Preserve Create if a Write follows within the window.
 		if existing.kind == EventCreated && kind == EventModified {
 			kind = EventCreated
 		}
 	}
-	pendingEntry := &pendingEvent{kind: kind}
+	pendingEntry := &pendingEvent{kind: kind, filtered: matchesExt}
 	pendingEntry.timer = time.AfterFunc(debounceDelay, func() {
-		mu.Lock()
-		kind := pendingEntry.kind
-		delete(pending, path)
-		mu.Unlock()
-
-		select {
-		case <-ctx.Done():
-		case out <- Event{Path: path, Kind: kind}:
+		state.mu.Lock()
+		if state.closed {
+			state.mu.Unlock()
+			return
 		}
+		entryKind := pendingEntry.kind
+		isFiltered := pendingEntry.filtered
+		delete(state.pending, path)
+
+		// Send on channels while holding the lock. This is safe because
+		// the channels are buffered (64 items) and the defer that closes
+		// them also holds this lock. This prevents a race between send
+		// and close.
+		event := Event{Path: path, Kind: entryKind}
+		if isFiltered {
+			select {
+			case filtered <- event:
+			default:
+				// Buffer full — drop event rather than deadlock.
+			}
+		}
+		select {
+		case all <- event:
+		default:
+		}
+		state.mu.Unlock()
 	})
-	pending[path] = pendingEntry
-	mu.Unlock()
+	state.pending[path] = pendingEntry
+	state.mu.Unlock()
 }
 
 func classifyEvent(fsEvent fsnotify.Event) EventKind {

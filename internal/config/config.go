@@ -58,6 +58,7 @@ type LSPConfig struct {
 	Command               []string       `toml:"command"`
 	Level                 string         `toml:"level"`
 	InitializationOptions map[string]any `toml:"initialization_options"`
+	RestartOn             []string       `toml:"restart_on"`
 }
 
 // MaxSeverity returns the LSP severity threshold for this config's level.
@@ -168,6 +169,7 @@ func merge(global, workspace *Config) *Config {
 				Command:               lsp.Command,
 				Level:                 lsp.Level,
 				InitializationOptions: lsp.InitializationOptions,
+				RestartOn:             lsp.RestartOn,
 			})
 		}
 	}

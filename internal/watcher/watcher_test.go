@@ -445,6 +445,61 @@ func TestRegression_CreateNotLostToDebouncedWrite(t *testing.T) {
 	}
 }
 
+func TestWatchAll(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	// Only watch .go files for the filtered channel.
+	w, err := New(dir, []string{".go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	filtered, all, err := w.WatchAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Create a .gradle.kts file — should appear on `all` but NOT on `filtered`.
+	gradlePath := filepath.Join(dir, "build.gradle.kts")
+	if err := os.WriteFile(gradlePath, []byte("plugins {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the event on the `all` channel.
+	allEvent := recv(t, all, 3*time.Second)
+	if allEvent.Path != gradlePath {
+		t.Fatalf("expected all-channel event for %s, got %s", gradlePath, allEvent.Path)
+	}
+	if allEvent.Kind != EventCreated {
+		t.Fatalf("expected EventCreated on all-channel, got %v", allEvent.Kind)
+	}
+
+	// The filtered channel should NOT have received this event.
+	expectNoEvent(t, filtered, 300*time.Millisecond)
+
+	// Now create a .go file — should appear on BOTH channels.
+	goPath := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(goPath, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	filteredEvent := recv(t, filtered, 3*time.Second)
+	if filteredEvent.Path != goPath {
+		t.Fatalf("expected filtered event for %s, got %s", goPath, filteredEvent.Path)
+	}
+
+	allEvent2 := recv(t, all, 3*time.Second)
+	if allEvent2.Path != goPath {
+		t.Fatalf("expected all-channel event for %s, got %s", goPath, allEvent2.Path)
+	}
+}
+
 func TestIgnoreCacheEviction(t *testing.T) {
 	w := &Watcher{
 		ignoreCache: make(map[string]ignoreCacheEntry),

@@ -169,6 +169,10 @@ func (m *mockSession) OnDiagnostics(handler func(uri string, version *int, diagn
 	m.diagHandler = handler
 }
 
+func (m *mockSession) NotifyWatchedFileChange(_ context.Context, _ string, _ protocol.FileChangeType) {
+	// No-op in mock.
+}
+
 func (m *mockSession) Shutdown(_ context.Context) error {
 	close(m.shutdownCh)
 	return m.shutdownErr
@@ -2394,5 +2398,71 @@ func TestKillSessionNotFound(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestMatchesRestartPattern(t *testing.T) {
+	d := &Daemon{}
+
+	tests := []struct {
+		name      string
+		patterns  []string
+		filePath  string
+		wantMatch bool
+	}{
+		{
+			name:      "gradle kts matches",
+			patterns:  []string{"**/*.gradle.kts"},
+			filePath:  "/workspace/app/build.gradle.kts",
+			wantMatch: true,
+		},
+		{
+			name:      "build.gradle matches",
+			patterns:  []string{"**/build.gradle"},
+			filePath:  "/workspace/app/build.gradle",
+			wantMatch: true,
+		},
+		{
+			name:      "kotlin source does not match gradle pattern",
+			patterns:  []string{"**/*.gradle.kts", "**/build.gradle"},
+			filePath:  "/workspace/app/src/main/kotlin/Foo.kt",
+			wantMatch: false,
+		},
+		{
+			name:      "no patterns means no match",
+			patterns:  nil,
+			filePath:  "/workspace/app/build.gradle.kts",
+			wantMatch: false,
+		},
+		{
+			name:      "gradle.properties matches",
+			patterns:  []string{"**/gradle.properties"},
+			filePath:  "/workspace/gradle.properties",
+			wantMatch: true,
+		},
+		{
+			name:      "settings.gradle matches",
+			patterns:  []string{"**/settings.gradle"},
+			filePath:  "/workspace/settings.gradle",
+			wantMatch: true,
+		},
+		{
+			name:      "go.mod matches",
+			patterns:  []string{"**/go.mod", "**/go.sum"},
+			filePath:  "/workspace/go.mod",
+			wantMatch: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			managed := &managedSession{
+				restartOn: tt.patterns,
+			}
+			got := d.matchesRestartPattern(managed, tt.filePath)
+			if got != tt.wantMatch {
+				t.Errorf("matchesRestartPattern(%v, %q) = %v, want %v", tt.patterns, tt.filePath, got, tt.wantMatch)
+			}
+		})
 	}
 }

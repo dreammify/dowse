@@ -739,3 +739,64 @@ func assertStringSlice(t *testing.T, label string, got, want []string) {
 		}
 	}
 }
+
+func TestRestartOnConfig(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("parses restart_on from workspace config", func(t *testing.T) {
+		wsPath := writeFile(t, dir, "restart_on.toml", `
+[[lsp]]
+extensions = [".kt"]
+command = ["kotlin-lsp", "--stdio"]
+restart_on = ["**/*.gradle.kts", "**/build.gradle"]
+`)
+		cfg, err := LoadWithPaths("", wsPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(cfg.LSPs) != 1 {
+			t.Fatalf("expected 1 LSP entry, got %d", len(cfg.LSPs))
+		}
+		assertStringSlice(t, "restart_on", cfg.LSPs[0].RestartOn, []string{"**/*.gradle.kts", "**/build.gradle"})
+	})
+
+	t.Run("empty restart_on is valid", func(t *testing.T) {
+		wsPath := writeFile(t, dir, "no_restart.toml", `
+[[lsp]]
+extensions = [".go"]
+command = ["gopls"]
+`)
+		cfg, err := LoadWithPaths("", wsPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(cfg.LSPs[0].RestartOn) != 0 {
+			t.Fatalf("expected empty restart_on, got %v", cfg.LSPs[0].RestartOn)
+		}
+	})
+
+	t.Run("merge preserves restart_on from global config", func(t *testing.T) {
+		globalPath := writeFile(t, dir, "global_restart.toml", `
+[[lsp]]
+extensions = [".go"]
+command = ["gopls"]
+restart_on = ["**/go.mod", "**/go.sum"]
+`)
+		wsPath := writeFile(t, dir, "ws_restart.toml", `
+[[lsp]]
+extensions = [".kt"]
+command = ["kotlin-lsp"]
+restart_on = ["**/*.gradle.kts"]
+`)
+		cfg, err := LoadWithPaths(globalPath, wsPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(cfg.LSPs) != 2 {
+			t.Fatalf("expected 2 LSP entries, got %d", len(cfg.LSPs))
+		}
+		// Workspace entry first, then global.
+		assertStringSlice(t, "ws restart_on", cfg.LSPs[0].RestartOn, []string{"**/*.gradle.kts"})
+		assertStringSlice(t, "global restart_on", cfg.LSPs[1].RestartOn, []string{"**/go.mod", "**/go.sum"})
+	})
+}
