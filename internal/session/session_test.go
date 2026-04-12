@@ -381,6 +381,167 @@ func TestCallbackRegisterCapability(t *testing.T) {
 	}
 }
 
+// watcherMockServer is a mock LSP server that registers file watchers for
+// **/*.gradle.kts and **/build.gradle patterns via client/registerCapability,
+// and records any workspace/didChangeWatchedFiles notifications it receives.
+func watcherMockServer() []string {
+	return []string{
+		"python3", "-u", "-c", `
+import sys, json
+
+def read_msg():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        line = line.decode('utf-8').strip()
+        if line == '':
+            break
+        if ':' in line:
+            k, v = line.split(':', 1)
+            headers[k.strip().lower()] = v.strip()
+    length = int(headers.get('content-length', 0))
+    if length == 0:
+        return None
+    body = sys.stdin.buffer.read(length)
+    return json.loads(body)
+
+def send_msg(obj):
+    body = json.dumps(obj).encode('utf-8')
+    header = ("Content-Length: %d\r\n\r\n" % len(body)).encode('utf-8')
+    sys.stdout.buffer.write(header + body)
+    sys.stdout.buffer.flush()
+
+req_id = 100
+watched_changes = []
+
+while True:
+    msg = read_msg()
+    if msg is None:
+        break
+    method = msg.get('method', '')
+    mid = msg.get('id')
+
+    if method == 'initialize':
+        send_msg({"jsonrpc":"2.0","result":{"capabilities":{"textDocumentSync":1}},"id":mid})
+    elif method == 'initialized':
+        # Register file watchers for Gradle build files.
+        send_msg({"jsonrpc":"2.0","id":req_id,"method":"client/registerCapability","params":{
+            "registrations":[{
+                "id":"gradle-watcher",
+                "method":"workspace/didChangeWatchedFiles",
+                "registerOptions":{
+                    "watchers":[
+                        {"globPattern":"**/*.gradle.kts"},
+                        {"globPattern":"**/build.gradle"}
+                    ]
+                }
+            }]
+        }})
+        req_id += 1
+    elif method == 'workspace/didChangeWatchedFiles':
+        watched_changes.extend(msg['params']['changes'])
+        # Send the count back as a diagnostic so the test can observe it.
+        send_msg({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+            "uri": msg['params']['changes'][0]['uri'],
+            "diagnostics": [{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},
+                "severity":4,"message":"watched-file-change-received"}]
+        }})
+    elif method == 'shutdown':
+        send_msg({"jsonrpc":"2.0","result":None,"id":mid})
+    elif method == 'exit':
+        break
+`,
+	}
+}
+
+func TestRegisterCapabilityStoresWatchers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, watcherMockServer(), nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() {
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer shutCancel()
+		_ = s.Shutdown(shutCtx)
+	}()
+
+	if err := s.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	// Give the server time to send the registerCapability request and for
+	// the session to process it.
+	time.Sleep(500 * time.Millisecond)
+
+	// Now test that NotifyWatchedFileChange sends a notification for matching files.
+	type diagEvent struct {
+		URI     string
+		Message string
+	}
+	ch := make(chan diagEvent, 1)
+	s.OnDiagnostics(func(uri string, version *int, diagnostics []protocol.Diagnostic) {
+		if len(diagnostics) > 0 {
+			ch <- diagEvent{URI: uri, Message: diagnostics[0].Message}
+		}
+	})
+
+	// This should match **/*.gradle.kts and trigger a notification.
+	s.NotifyWatchedFileChange(ctx, workspaceDir+"/build.gradle.kts", protocol.FileChangeTypeChanged)
+
+	select {
+	case ev := <-ch:
+		if ev.Message != "watched-file-change-received" {
+			t.Errorf("expected message 'watched-file-change-received', got %q", ev.Message)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for watched file change notification response")
+	}
+}
+
+func TestNotifyWatchedFileChangeNoMatch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	workspaceDir := t.TempDir()
+	s, err := session.New(ctx, workspaceDir, watcherMockServer(), nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() {
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer shutCancel()
+		_ = s.Shutdown(shutCtx)
+	}()
+
+	if err := s.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	ch := make(chan struct{}, 1)
+	s.OnDiagnostics(func(uri string, version *int, diagnostics []protocol.Diagnostic) {
+		ch <- struct{}{}
+	})
+
+	// This file does NOT match the registered patterns.
+	s.NotifyWatchedFileChange(ctx, workspaceDir+"/main.kt", protocol.FileChangeTypeChanged)
+
+	// Should NOT receive any notification.
+	select {
+	case <-ch:
+		t.Fatal("unexpected notification for non-matching file")
+	case <-time.After(500 * time.Millisecond):
+		// Good — no notification sent.
+	}
+}
+
 func TestDefaultLanguageID(t *testing.T) {
 	tests := []struct {
 		ext  string

@@ -383,6 +383,14 @@ type DidChangeWatchedFilesClientCapabilities struct {
 	RelativePatternSupport *bool `json:"relativePatternSupport,omitempty"`
 }
 
+type DidChangeWatchedFilesParams struct {
+	Changes []FileEvent `json:"changes"`
+}
+
+type DidChangeWatchedFilesRegistrationOptions struct {
+	Watchers []FileSystemWatcher `json:"watchers"`
+}
+
 type DidCloseTextDocumentParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
@@ -489,6 +497,19 @@ const (
 	FailureHandlingKindUndo                  FailureHandlingKind = "undo"
 )
 
+type FileChangeType uint32
+
+const (
+	FileChangeTypeCreated FileChangeType = 1
+	FileChangeTypeChanged FileChangeType = 2
+	FileChangeTypeDeleted FileChangeType = 3
+)
+
+type FileEvent struct {
+	Uri  string         `json:"uri"`
+	Type FileChangeType `json:"type"`
+}
+
 type FileOperationClientCapabilities struct {
 	DynamicRegistration *bool `json:"dynamicRegistration,omitempty"`
 	DidCreate           *bool `json:"didCreate,omitempty"`
@@ -532,6 +553,11 @@ type FileOperationPatternOptions struct {
 
 type FileOperationRegistrationOptions struct {
 	Filters []FileOperationFilter `json:"filters"`
+}
+
+type FileSystemWatcher struct {
+	GlobPattern GlobPattern `json:"globPattern"`
+	Kind        *WatchKind  `json:"kind,omitempty"`
 }
 
 type FoldingRangeClientCapabilities struct {
@@ -895,6 +921,16 @@ type ReferenceClientCapabilities struct {
 
 type ReferenceOptions struct {
 	WorkDoneProgress *bool `json:"workDoneProgress,omitempty"`
+}
+
+type Registration struct {
+	Id              string          `json:"id"`
+	Method          string          `json:"method"`
+	RegisterOptions json.RawMessage `json:"registerOptions,omitempty"`
+}
+
+type RegistrationParams struct {
+	Registrations []Registration `json:"registrations"`
 }
 
 type RegularExpressionEngineKind = string
@@ -1264,10 +1300,27 @@ type UnchangedDocumentDiagnosticReport struct {
 	ResultId string `json:"resultId"`
 }
 
+type Unregistration struct {
+	Id     string `json:"id"`
+	Method string `json:"method"`
+}
+
+type UnregistrationParams struct {
+	Unregisterations []Unregistration `json:"unregisterations"`
+}
+
 type VersionedTextDocumentIdentifier struct {
 	Uri     string `json:"uri"`
 	Version int32  `json:"version"`
 }
+
+type WatchKind uint32
+
+const (
+	WatchKindCreate WatchKind = 1
+	WatchKindChange WatchKind = 2
+	WatchKindDelete WatchKind = 4
+)
 
 type WindowClientCapabilities struct {
 	WorkDoneProgress *bool                                 `json:"workDoneProgress,omitempty"`

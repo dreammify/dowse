@@ -111,6 +111,17 @@ var allowList = []string{
 	"WorkDoneProgressEnd",
 	"DefinitionParams",
 	"TextDocumentPositionParams",
+	"DidChangeWatchedFilesParams",
+	"FileEvent",
+	"FileChangeType",
+	"WatchKind",
+	"FileSystemWatcher",
+	"DidChangeWatchedFilesRegistrationOptions",
+	"Registration",
+	"RegistrationParams",
+	"Unregistration",
+	"UnregistrationParams",
+	"RelativePattern",
 }
 
 type generator struct {

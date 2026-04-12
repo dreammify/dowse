@@ -40,6 +40,7 @@ type LSPSession interface {
 	DiagModel() session.DiagnosticModel
 	PID() int
 	OnDiagnostics(handler func(uri string, version *int, diagnostics []protocol.Diagnostic))
+	NotifyWatchedFileChange(ctx context.Context, filePath string, changeType protocol.FileChangeType)
 	Progress() string
 	ProgressWithPercent() (string, *uint32)
 	Shutdown(ctx context.Context) error
@@ -69,6 +70,8 @@ type managedSession struct {
 	inactive     bool               // true = LSP shut down, kept as tombstone for status visibility
 	cancelCtx    context.CancelFunc // cancels per-session context; stops watcher + crash monitor
 	extensions   []string           // file extensions this session handles (e.g., [".go"])
+	key          sessionKey         // session map key, used for deactivation on build file changes
+	restartOn    []string           // glob patterns that trigger session restart (e.g., ["**/*.gradle.kts"])
 }
 
 // fileLock returns a per-URI mutex, creating one if needed. Must be called
@@ -632,7 +635,7 @@ func (d *Daemon) processSingleFile(ctx context.Context, filePath string, noWait 
 	}
 
 	// Get or create session.
-	managed, err := d.getOrCreateSession(ctx, result.ProjectRoot, lspCfg.Command, lspCfg.InitializationOptions, lspCfg.Extensions)
+	managed, err := d.getOrCreateSession(ctx, result.ProjectRoot, lspCfg.Command, lspCfg.InitializationOptions, lspCfg.Extensions, lspCfg.RestartOn)
 	if err != nil {
 		return DiagnosticsResponse{}, fmt.Errorf("session error: %w", err)
 	}
@@ -813,6 +816,50 @@ func (d *Daemon) handleWatcherEvents(ctx context.Context, managed *managedSessio
 	}
 }
 
+// handleWatchedFileEvents forwards all file system events (regardless of
+// extension) to the LSP session's NotifyWatchedFileChange method, which checks
+// them against dynamically registered file watcher patterns.
+//
+// It also checks events against the session's restart_on glob patterns. If a
+// matching file changes, the session is deactivated so that the next request
+// triggers a fresh LSP initialization (picking up e.g. new Gradle dependencies).
+func (d *Daemon) handleWatchedFileEvents(ctx context.Context, managed *managedSession, events <-chan watcher.Event) {
+	for event := range events {
+		// Check if this file matches a restart_on pattern.
+		if d.matchesRestartPattern(managed, event.Path) {
+			slog.Info("build file changed, restarting session",
+				"file", event.Path, "workspace", managed.key.workspaceRoot)
+			d.deactivateSessionIfMatch(managed.key, managed, "build file changed: "+filepath.Base(event.Path))
+			return
+		}
+
+		var changeType protocol.FileChangeType
+		switch event.Kind {
+		case watcher.EventCreated:
+			changeType = protocol.FileChangeTypeCreated
+		case watcher.EventModified:
+			changeType = protocol.FileChangeTypeChanged
+		case watcher.EventDeleted:
+			changeType = protocol.FileChangeTypeDeleted
+		default:
+			continue
+		}
+		managed.session.NotifyWatchedFileChange(ctx, event.Path, changeType)
+	}
+}
+
+// matchesRestartPattern checks if a file path matches any of the session's
+// restart_on glob patterns.
+func (d *Daemon) matchesRestartPattern(managed *managedSession, filePath string) bool {
+	normalizedPath := filepath.ToSlash(filePath)
+	for _, pattern := range managed.restartOn {
+		if session.MatchGlob(pattern, normalizedPath) || session.MatchGlob(pattern, filepath.Base(normalizedPath)) {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *Daemon) handleDefinition(dCtx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req DefinitionRequest
@@ -872,7 +919,7 @@ func (d *Daemon) processDefinition(ctx context.Context, req DefinitionRequest) (
 		return DefinitionResponse{}, fmt.Errorf("%w: %v", errUnconfiguredExtension, err)
 	}
 
-	managed, err := d.getOrCreateSession(ctx, result.ProjectRoot, lspCfg.Command, lspCfg.InitializationOptions, lspCfg.Extensions)
+	managed, err := d.getOrCreateSession(ctx, result.ProjectRoot, lspCfg.Command, lspCfg.InitializationOptions, lspCfg.Extensions, lspCfg.RestartOn)
 	if err != nil {
 		return DefinitionResponse{}, fmt.Errorf("session error: %w", err)
 	}
@@ -898,7 +945,7 @@ func (d *Daemon) processDefinition(ctx context.Context, req DefinitionRequest) (
 	return formatDefinitionResponse(locations, result.ProjectRoot), nil
 }
 
-func (d *Daemon) getOrCreateSession(ctx context.Context, wsRoot string, lspCmd []string, initOptions map[string]any, extensions []string) (*managedSession, error) {
+func (d *Daemon) getOrCreateSession(ctx context.Context, wsRoot string, lspCmd []string, initOptions map[string]any, extensions []string, restartOn []string) (*managedSession, error) {
 	key := sessionKey{
 		workspaceRoot: wsRoot,
 		lspCommand:    strings.Join(lspCmd, "\x00"),
@@ -968,6 +1015,8 @@ func (d *Daemon) getOrCreateSession(ctx context.Context, wsRoot string, lspCmd [
 			lastActivity: now,
 			cancelCtx:    sessionCancel,
 			extensions:   extensions,
+			key:          key,
+			restartOn:    restartOn,
 		}
 
 		// Register the session before initialization so it's visible to
@@ -1005,11 +1054,12 @@ func (d *Daemon) getOrCreateSession(ctx context.Context, wsRoot string, lspCmd [
 		if err != nil {
 			slog.Error("failed to create file watcher", "workspace", wsRoot, "err", err)
 		} else {
-			watchEvents, err := fileWatcher.Watch(sessionCtx)
+			filteredEvents, allEvents, err := fileWatcher.WatchAll(sessionCtx)
 			if err != nil {
 				slog.Error("failed to start file watcher", "workspace", wsRoot, "err", err)
 			} else {
-				go d.handleWatcherEvents(sessionCtx, managed, watchEvents)
+				go d.handleWatcherEvents(sessionCtx, managed, filteredEvents)
+				go d.handleWatchedFileEvents(sessionCtx, managed, allEvents)
 			}
 		}
 

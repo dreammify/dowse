@@ -1,3 +1,4 @@
 [[lsp]]
 extensions = [".kt"]
 command = ["kotlin-lsp", "--stdio"]
+restart_on = ["**/*.gradle.kts", "**/build.gradle", "**/settings.gradle", "**/gradle.properties"]
